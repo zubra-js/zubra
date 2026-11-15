@@ -429,6 +429,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                     text: source[function.span.start as usize..function.span.end as usize]
                         .to_owned(),
                     reads: load_reads(function),
+                    returns: load_returns(function, &at),
                     span: at(function.span.start),
                 });
                 server_ranges.push(range);
@@ -1402,6 +1403,74 @@ fn load_reads(function: &oxc_ast::ast::Function<'_>) -> Option<Vec<String>> {
             (!finder.opaque).then_some(finder.reads)
         }
         _ => None,
+    }
+}
+
+/// The keys of the object literals `load` itself returns (not those of a function inside it).
+fn load_returns(
+    function: &oxc_ast::ast::Function<'_>,
+    at: &dyn Fn(u32) -> Span,
+) -> Vec<(String, Span)> {
+    let mut finder = Returns { keys: Vec::new() };
+    if let Some(body) = &function.body {
+        finder.visit_function_body(body);
+    }
+    finder
+        .keys
+        .into_iter()
+        .map(|(key, start)| (key, at(start)))
+        .collect()
+}
+
+struct Returns {
+    keys: Vec<(String, u32)>,
+}
+
+impl<'a> Visit<'a> for Returns {
+    fn visit_return_statement(&mut self, statement: &oxc_ast::ast::ReturnStatement<'a>) {
+        let Some(Expression::ObjectExpression(object)) = &statement.argument else {
+            return;
+        };
+        use oxc_ast::ast::ObjectPropertyKind;
+        // With a spread the compiler can't say what the object holds.
+        if object
+            .properties
+            .iter()
+            .any(|property| matches!(property, ObjectPropertyKind::SpreadProperty(_)))
+        {
+            return;
+        }
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else {
+                continue;
+            };
+            if property.computed {
+                continue;
+            }
+            if let Some(name) = property
+                .key
+                .static_name()
+                .and_then(|name| name.as_str().map(str::to_owned))
+            {
+                if !self.keys.iter().any(|(key, _)| key == &name) {
+                    self.keys.push((name, property.span.start));
+                }
+            }
+        }
+    }
+
+    // A function inside `load` returns to its own caller.
+    fn visit_function(
+        &mut self,
+        _function: &oxc_ast::ast::Function<'a>,
+        _flags: oxc_syntax::scope::ScopeFlags,
+    ) {
+    }
+
+    fn visit_arrow_function_expression(
+        &mut self,
+        _arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+    ) {
     }
 }
 

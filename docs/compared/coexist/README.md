@@ -31,7 +31,7 @@ The React and Vue hosts use each tool's components for that framework (`impl/<to
 
 ## What was measured
 
-Zubra 5.14.0, Lit 3.3.3, Stencil 4.45.3 and Enhance SSR 4.0.3, all from npm, on Node 22 and Chromium. From `node measure.mjs` on 2026-11-13.
+Zubra 5.16.0, Lit 3.3.3, Stencil 4.45.3 and Enhance SSR 4.0.3, all from npm, on Node 22 and Chromium. From `node measure.mjs` on 2026-11-14.
 
 **Lines written** (not blank, not comments):
 
@@ -48,24 +48,24 @@ Zubra 5.14.0, Lit 3.3.3, Stencil 4.45.3 and Enhance SSR 4.0.3, all from npm, on 
 
 | Host | Zubra | Lit | Stencil | Enhance |
 |---|---:|---:|---:|---:|
-| React | 17.0 KB | 9.2 KB | 12.9 KB | 5.2 KB |
-| Vue | 16.4 KB | 8.8 KB | 13.1 KB | 5.5 KB |
-| Svelte | 14.6 KB | 8.3 KB | 11.6 KB | 5.0 KB |
-| Angular | 14.8 KB | 8.3 KB | 11.7 KB | 5.1 KB |
+| React | 16.8 KB | 9.2 KB | 12.9 KB | 5.2 KB |
+| Vue | 16.2 KB | 8.8 KB | 13.1 KB | 5.5 KB |
+| Svelte | 15.2 KB | 8.3 KB | 11.6 KB | 5.0 KB |
+| Angular | 15.3 KB | 8.3 KB | 11.7 KB | 5.1 KB |
 
-Zubra also has a 1.1 KB chunk loaded on demand (it repairs hydration markers a sanitizer removed).
+Zubra also has a 1.2 KB chunk loaded on demand (it repairs hydration markers a sanitizer removed).
 
 **The server page:**
 
 | | Zubra | Lit | Stencil | Enhance |
 |---|---:|---:|---:|---:|
 | HTML, 3 orders (gzip) | 1.9 KB | 2.0 KB | 2.1 KB | 1.7 KB |
-| JavaScript loaded (gzip) | 21.4 KB, 11 requests | 11.1 KB, 1 request | 12.8 KB, 1 request | 5.7 KB, 1 request |
-| Elements defined, slow connection | 1108 ms | 526 ms | 519 ms | 419 ms |
-| Render, 3 orders, new data each time | 641 µs | 147 µs | 1913 µs | 397 µs |
-| Render, 100 orders, new data each time | 6013 µs | 1293 µs | 15189 µs | 4473 µs |
-| Render, 3 orders, the same data again | 534 µs | 72 µs | 1904 µs | 426 µs |
-| Render, 100 orders, the same data again | 5656 µs | 1301 µs | 14811 µs | 4223 µs |
+| JavaScript loaded (gzip) | 17.7 KB, 2 requests | 11.1 KB, 1 request | 12.8 KB, 1 request | 5.7 KB, 1 request |
+| Elements defined, slow connection | 600 ms | 527 ms | 520 ms | 419 ms |
+| Render, 3 orders, new data each time | 258 µs | 119 µs | 2422 µs | 490 µs |
+| Render, 100 orders, new data each time | 4088 µs | 1600 µs | 22004 µs | 5728 µs |
+| Render, 3 orders, the same data again | 33 µs | 98 µs | 2286 µs | 471 µs |
+| Render, 100 orders, the same data again | 283 µs | 1545 µs | 21173 µs | 5470 µs |
 | JavaScript off: orders readable | yes | yes | yes | yes |
 | JavaScript off: label names its input | yes | yes | yes | yes |
 | JavaScript off: the form adds the order | yes | no | no | yes |
@@ -78,5 +78,5 @@ Zubra also has a 1.1 KB chunk loaded on demand (it repairs hydration markers a s
 - **The Vue host uses plain `v-model`** on the two controls, because Stencil's Vue output supports only that. Zubra's `v-model:selected` and `v-model:open` aren't exercised.
 - **The Angular host binds `[value]` and `(valuechange)`**, not `ngModel`. Zubra ships `ZubraModel` and Stencil can generate value accessors; Lit and Enhance would need one written.
 - **"Elements defined" is Chromium's throttle** (150 ms latency, 1.6 Mbit/s, nothing cached) against a local server that doesn't compress, not a real network.
-- **Render times are one Node.js process on one machine**, and move by a few tens of microseconds between runs. "New data each time" changes one customer's name per render; "the same data again" renders one state repeatedly, which also shows what a server keeps from the last render. Zubra's are through the compiler's WebAssembly build, one request per component rendered.
+- **Render times are one Node.js process on one machine**, and move by a few tens of microseconds between runs. "New data each time" changes one customer's name per render; "the same data again" renders one state repeatedly, which also shows what a server keeps from the last render. Zubra's are through the compiler's WebAssembly build, one request per component rendered. Zubra's server page uses `createZubra({ bundle: true })` (off by default in 5.x), which serves the runtime as one module and the page's components as another; without it the page loads 22.1 KB in 11 requests.
 - **Chromium only.**

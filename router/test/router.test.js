@@ -11,9 +11,13 @@ import { createRouter } from '../src/index.js';
 const components = fileURLToPath(new URL('./components', import.meta.url));
 const zubra = createZubra({ components });
 const errors = [];
-const router = await createRouter({ zubra, components, onError: (error) => errors.push(error) });
+// The cache is inside this package, so the fixtures' `import … from '@zubra/router'` resolves
+// to it (in an app it resolves from node_modules).
+const cacheDir = fileURLToPath(new URL('./.cache', import.meta.url));
+const person = ({ request }) => ({ person: request.headers.get('x-person') });
+const router = await createRouter({ zubra, components, cacheDir, context: person, onError: (error) => errors.push(error) });
 
-const get = async (path, method = 'GET') => router.fetch(new Request(`http://localhost${path}`, { method }));
+const get = async (path, method = 'GET', headers = {}) => router.fetch(new Request(`http://localhost${path}`, { method, headers }));
 
 test('the table has every route, by directive and by folder, most specific first', () => {
   // Segment by segment, text before a parameter before a wildcard; then the longer pattern.
@@ -25,8 +29,10 @@ test('the table has every route, by directive and by folder, most specific first
     ['/', 'home-page'],
     ['/about', 'routes/about'],
     ['/broken', 'broken-page'],
+    ['/door', 'door-page'],
     ['/farm', 'farm-today'],
     ['/farmers', 'farmers-page'],
+    ['/old', 'old-page'],
   ]);
   assert.equal(router.match('/farms/new').name, 'routes/farms/new', 'a static segment beats a parameter');
   assert.deepEqual(router.match('/farms/hilltop'), { name: 'farm-page', pattern: '/farms/:id', params: { id: 'hilltop' } });
@@ -89,6 +95,7 @@ test('lang and head go on every page', async () => {
   const styled = await createRouter({
     zubra,
     components,
+    cacheDir,
     lang: 'en-GB',
     head: ({ route }) => `<link rel="stylesheet" href="/site.css"><meta name="at" content="${route.pattern}">`,
   });
@@ -112,6 +119,80 @@ test("load and what only it imports never reach the browser", async () => {
   assert.doesNotMatch(module, /farms\.js|sk_live_router|function load|Hilltop/);
   const served = await zubra.fetch(new Request('http://localhost/_zubra/components/farms.js'));
   assert.equal(served?.status ?? 404, 404);
+});
+
+test('notFound() is a 404, redirect() sends the browser on', async () => {
+  const missing = await get('/farms/nowhere');
+  assert.equal(missing.status, 404);
+  assert.equal(await missing.text(), 'Not found');
+  const moved = await get('/old');
+  assert.equal(moved.status, 303);
+  assert.equal(moved.headers.get('location'), '/farms/new');
+  assert.equal(await moved.text(), '');
+  const forGood = await get('/old?moved');
+  assert.equal(forGood.status, 301);
+  assert.equal(forGood.headers.get('location'), '/about');
+});
+
+test("a title from load is the document's, escaped", async () => {
+  const html = await (await get('/farms/hilltop')).text();
+  assert.match(html, /<head>[\s\S]*<title>Hilltop Farm &lt;Tailgate><\/title>[\s\S]*<\/head>/);
+  assert.doesNotMatch(await (await get('/')).text(), /<title>/);
+});
+
+test("context reaches load, and show() renders another component at the same URL", async () => {
+  const in_ = await get('/door', 'GET', { 'x-person': 'Grace' });
+  assert.equal(in_.status, 200);
+  assert.match(await in_.text(), /<h1>Door: Grace<\/h1>/);
+  const out = await get('/door');
+  assert.equal(out.status, 200);
+  const form = await out.text();
+  assert.match(form, /<app-shell[\s\S]*<sign-in[\s\S]*<form method="post" action="\/staff\/sign-in">[\s\S]*name="next" value="\/door"/);
+  assert.doesNotMatch(form, /door-page/);
+});
+
+test("a layout's load reaches the pages under it, and answers for its section", async () => {
+  const stock = await (await get('/farm/stock', 'GET', { 'x-person': 'Lin' })).text();
+  assert.match(stock, /<p class="farmer">Lin<\/p>/);
+  assert.match(stock, /<p class="for">Stock for Lin<\/p>/, "the layout's result is the page's prop");
+  assert.match(stock, /<title>Stock<\/title>/);
+  // Turned away by the layout: its notice takes the layout's place, in the app's shell, and
+  // the page's load never runs.
+  const away = await get('/farm/stock?as=nobody');
+  assert.equal(away.status, 403);
+  const notice = await away.text();
+  assert.match(notice, /<app-shell[\s\S]*<main>[\s\S]*<farmers-only[\s\S]*\/farm\/stock is for farmers/);
+  assert.doesNotMatch(notice, /farm-shell|farm-stock|<title>/);
+});
+
+test("an action's answer reaches load as result, and its cookie is cleared", async () => {
+  const asked = [];
+  const actions = {
+    result(request, setHeader) {
+      asked.push(request);
+      setHeader('set-cookie', '__zb_result=; Max-Age=0; Path=/');
+      return { action: '/_zb/action/sign-in/enter', value: { error: 'Wrong code' } };
+    },
+  };
+  const withActions = await createRouter({ zubra, components, cacheDir, context: person, actions });
+  const response = await withActions.fetch(new Request('http://localhost/door'));
+  assert.match(await response.text(), /<p class="problem">Wrong code<\/p>/);
+  assert.deepEqual(response.headers.getSetCookie(), ['__zb_result=; Max-Age=0; Path=/']);
+  assert.equal(asked.length, 1, 'read once');
+  // A page with no load leaves the answer for the page that wants it.
+  await withActions.fetch(new Request('http://localhost/'));
+  assert.equal(asked.length, 1);
+});
+
+test("on Node's http, context gets req and the cleared cookie is sent", async () => {
+  const actions = { result: (req, setHeader) => { setHeader('set-cookie', 'a=1'); setHeader('set-cookie', 'b=2'); return null; } };
+  const node = await createRouter({ zubra, components, cacheDir, actions, context: ({ req }) => ({ person: req?.headers['x-person'] }) });
+  const server = createServer(node.listener);
+  await new Promise((done) => server.listen(0, done));
+  after(() => server.close());
+  const response = await fetch(`http://localhost:${server.address().port}/door`, { headers: { 'x-person': 'Ada' } });
+  assert.match(await response.text(), /<h1>Door: Ada<\/h1>/);
+  assert.deepEqual(response.headers.getSetCookie(), ['a=1', 'b=2']);
 });
 
 test('an unknown path, a post and a thrown load', async () => {

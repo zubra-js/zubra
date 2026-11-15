@@ -299,6 +299,9 @@ pub struct Load {
     /// The route parameters it reads (`params.id`, `{ params: { id } }`), or `None` when it
     /// uses `params` (or its whole argument) in a way the compiler can't follow.
     pub reads: Option<Vec<String>>,
+    /// The keys of the object literals it returns (`return { farm, title: farm.name }`), where
+    /// the compiler can see them: not a literal with a spread, nor a returned variable or call.
+    pub returns: Vec<(String, Span)>,
     pub span: Span,
 }
 

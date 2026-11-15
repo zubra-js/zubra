@@ -6,7 +6,7 @@ import { COLUMNS } from '../../shared/data.js';
 import { shell } from '../../hosts/server/server.mjs';
 
 export async function create() {
-  const zubra = createZubra({ components: fileURLToPath(new URL('./components', import.meta.url)), production: true, clientModules: 'needed' });
+  const zubra = createZubra({ components: fileURLToPath(new URL('./components', import.meta.url)), production: true, clientModules: 'needed', bundle: true });
   return {
     handle: (request, response) => zubra.handle(request, response),
     page(state) {

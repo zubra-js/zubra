@@ -1,7 +1,10 @@
 <script>
   'use layout /farm root'
-  export async function load({ url }) {
-    return { farmer: url.searchParams.get('as') ?? 'Ada', hidden: 'stays on the server' }
+  import { show } from '@zubra/router'
+  export async function load({ url, context }) {
+    const farmer = url.searchParams.get('as') ?? context.person ?? 'Ada'
+    if (farmer === 'nobody') return show('farmers-only', { wanted: url.pathname }, { status: 403 })
+    return { farmer, hidden: 'stays on the server' }
   }
 </script>
 <farm-shell route={{}} farmer="">

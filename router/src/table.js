@@ -105,7 +105,11 @@ export function buildTable(entries) {
   }
   pages.sort((a, b) => compareSpecificity(a.pattern, b.pattern));
   layouts.sort((a, b) => segmentsOf(a.pattern).length - segmentsOf(b.pattern).length);
-  for (const page of pages) page.layouts = layoutsFor(page.pattern, layouts).map((layout) => layout.name);
+  for (const page of pages) {
+    // `around`: every layout over the page's path; `layouts`: those it is rendered inside.
+    page.around = layoutsAround(page.pattern, layouts).map((layout) => layout.name);
+    page.layouts = layoutsFor(page.pattern, layouts).map((layout) => layout.name);
+  }
   return { pages, layouts };
 }
 
@@ -117,10 +121,19 @@ const segmentsOf = (pattern) => pattern.split('/').filter(Boolean);
  * `/farmers`), from the innermost `root` one inwards.
  */
 export function layoutsFor(pattern, layouts) {
+  return fromRoot(layoutsAround(pattern, layouts));
+}
+
+/** Every layout whose prefix is the start of the path, outermost first, `root` ones or not. */
+export function layoutsAround(pattern, layouts) {
   const path = segmentsOf(pattern);
-  const around = layouts
+  return layouts
     .filter((layout) => segmentsOf(layout.pattern).every((segment, index) => path[index] === segment))
     .sort((a, b) => segmentsOf(a.pattern).length - segmentsOf(b.pattern).length);
+}
+
+/** A list of layouts, outermost first, from its innermost `root` one. */
+export function fromRoot(around) {
   const from = around.findLastIndex((layout) => layout.root);
   return from > 0 ? around.slice(from) : around;
 }

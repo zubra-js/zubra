@@ -872,6 +872,35 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
     found
 }
 
+/// What a page's `load` returns reaches it as props, so a key that isn't one is dropped:
+/// usually a misspelling, or a prop not declared yet. (`title` is the document's; a layout's
+/// keys also reach the pages under it, which the compiler can't see from here.)
+fn dropped_load_keys(component: &ast::ComponentAst) -> Vec<Diagnostic> {
+    let (Some(route), Some(load)) = (&component.script.route, &component.script.load) else {
+        return Vec::new();
+    };
+    if route.kind != ast::RouteKind::Page {
+        return Vec::new();
+    }
+    load.returns
+        .iter()
+        .filter(|(key, _)| key != "title" && !component.props.iter().any(|prop| &prop.name == key))
+        .map(|(key, span)| {
+            Diagnostic::new(
+                *span,
+                format!(
+                    "`load` returns `{key}`, which <{}> doesn't declare as a prop, so it never reaches the page",
+                    component.tag
+                ),
+            )
+            .with_help(format!(
+                "declare `{key}` as a prop on <{}>'s host tag, or remove it from what `load` returns",
+                component.tag
+            ))
+        })
+        .collect()
+}
+
 fn warnings_of(source: &str) -> Vec<Diagnostic> {
     let parsed = if jsx::looks_like_jsx(source) {
         // A JSX component's props are its parameters; their names are checked the same way.
@@ -895,6 +924,7 @@ fn warnings_of(source: &str) -> Vec<Diagnostic> {
         .unknown_directives
         .iter()
         .cloned()
+        .chain(dropped_load_keys(&component))
         .chain(
             validate::enum_props(&component)
                 .into_iter()

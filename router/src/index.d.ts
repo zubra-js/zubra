@@ -3,6 +3,19 @@ import type { Zubra } from '@zubra/server';
 
 export { RouteError } from './table.js';
 
+/** An answer from `load` that isn't props. */
+export interface LoadAnswer { readonly __answer: 'notFound' | 'redirect' | 'show' }
+/** `return notFound()`: nothing is behind this path. The response is a 404. */
+export function notFound(): LoadAnswer;
+/** `return redirect('/cart')`: send the browser elsewhere (303 unless `status` says otherwise). */
+export function redirect(location: string, status?: 301 | 302 | 303 | 307 | 308): LoadAnswer;
+/**
+ * `return show('sign-in', { next })`: render another component at the same URL, in place of
+ * the one whose `load` this is. From a layout, it takes the layout's place, inside the layouts
+ * over it.
+ */
+export function show(name: string, props?: Record<string, unknown>, options?: { status?: number }): LoadAnswer;
+
 /** What a route's `load` is given. */
 export interface LoadArguments {
   /** The route's parameters (`{ id: 'hilltop' }` for `/farms/:id` at `/farms/hilltop`). */
@@ -11,6 +24,10 @@ export interface LoadArguments {
   request: Request;
   /** The page the request matched. */
   route: MatchedRoute;
+  /** What `createRouter({ context })` returned for this request (`{}` without one). */
+  context: Record<string, any>;
+  /** After a post without JavaScript, the action's answer, once (needs `createRouter({ actions })`). */
+  result: { action: string; value: unknown } | null;
 }
 
 /** What a layout or page that declares a `route` prop is given. */
@@ -38,6 +55,13 @@ export interface RouterOptions {
    * as given: the app's own markup, never a visitor's text.
    */
   head?: string | ((page: { url: URL; request: Request; route: MatchedRoute }) => string | Promise<string>);
+  /**
+   * What each `load` gets as `context` (the signed-in person, a database handle), made once per
+   * request. The same function `createActions({ context })` takes.
+   */
+  context?: (from: { request: Request; req?: IncomingMessage; c?: unknown }) => object | Promise<object>;
+  /** The app's `createActions()`, so a `load` gets an action's answer as `result`. */
+  actions?: { result(request: Request | IncomingMessage, setHeader?: (name: string, value: string) => void): unknown };
 }
 
 export interface Route {
@@ -57,7 +81,7 @@ export interface Router {
   /** For `http.createServer(router.listener)`: a route, or a plain 404. */
   listener(req: IncomingMessage, res: ServerResponse): Promise<void>;
   /** Fetch-style servers: the page's Response, or null when the request isn't a route's. */
-  fetch(request: Request): Promise<Response | null>;
+  fetch(request: Request, extra?: { req?: IncomingMessage; c?: unknown }): Promise<Response | null>;
   /** The pages, most specific first. */
   routes(): Route[];
   /** The layouts, outermost first (`app.zb` is `/`). */

@@ -1,0 +1,9 @@
+<script>
+  'use route /door'
+  import { show } from '@zubra/router'
+  export async function load({ context, result }) {
+    if (!context.person) return show('sign-in', { next: '/door', problem: result?.value?.error ?? '' })
+    return { who: context.person }
+  }
+</script>
+<door-page who=""><h1>Door: {who}</h1></door-page>

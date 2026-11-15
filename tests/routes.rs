@@ -211,3 +211,39 @@ fn route_directives_are_checked() {
     assert!(help("use layuot /farm").contains("did you mean 'use layout /farm'?"));
     assert!(help("use cache").contains("@zubra/router"));
 }
+
+#[test]
+fn a_key_load_returns_that_is_not_a_prop_is_a_warning() {
+    let page = |load: &str| {
+        format!(
+            "<script>\n  'use route /farms/:id'\n  export async function load({{ params }}) {{\n    {load}\n  }}\n</script>\n<farm-page farm={{null}}></farm-page>"
+        )
+    };
+    let messages = |source: &str| -> Vec<String> {
+        zubra::warnings(source)
+            .into_iter()
+            .map(|warning| warning.message)
+            .collect()
+    };
+    let dropped = messages(&page(
+        "if (!params.id) return { farm: null }; return { farm: 1, frm: 2, title: 'A farm' };",
+    ));
+    assert_eq!(dropped.len(), 1, "{dropped:?}");
+    assert!(
+        dropped[0].contains("`load` returns `frm`, which <farm-page> doesn't declare as a prop"),
+        "{dropped:?}"
+    );
+    // What the compiler can't see, it says nothing about: a spread, a variable, a call, and a
+    // function inside load, which returns to its own caller.
+    for quiet in [
+        "const rest = { x: params.id }; return { farm: 1, ...rest };",
+        "const answer = { nope: params.id }; return answer;",
+        "return notFound(params.id);",
+        "const each = [params.id].map((id) => { return { nope: id }; }); return { farm: each };",
+    ] {
+        assert!(messages(&page(quiet)).is_empty(), "{quiet}");
+    }
+    // A layout's keys reach the pages under it, so they aren't checked against its own props.
+    let layout = "<script>\n  'use layout /farm'\n  export function load() { return { person: 1 }; }\n</script>\n<farm-shell><zb-slot></zb-slot></farm-shell>";
+    assert!(messages(layout).is_empty());
+}

@@ -1,4 +1,7 @@
 <script>
   'use route /farm/stock'
+  export async function load() {
+    return { title: 'Stock' }
+  }
 </script>
-<farm-stock><h1>Stock</h1></farm-stock>
+<farm-stock farmer=""><h1>Stock</h1><p class="for">Stock for {farmer}</p></farm-stock>

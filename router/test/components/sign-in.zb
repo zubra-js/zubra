@@ -1,0 +1,4 @@
+<sign-in next="" problem="">
+  <form method="post" action="/staff/sign-in"><input type="hidden" name="next" value={next}><button>Sign in</button></form>
+  <p class="problem">{problem}</p>
+</sign-in>

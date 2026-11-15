@@ -8,3 +8,4 @@ editors/*.zip
 
 # Release binaries (scripts/package-binary.sh)
 /dist/
+router/test/.cache/

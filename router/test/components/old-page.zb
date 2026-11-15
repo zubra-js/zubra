@@ -1,0 +1,8 @@
+<script>
+  'use route /old'
+  import { redirect } from '@zubra/router'
+  export function load({ url }) {
+    return redirect(url.searchParams.has('moved') ? '/about' : '/farms/new', url.searchParams.has('moved') ? 301 : 303)
+  }
+</script>
+<old-page><p>never</p></old-page>
