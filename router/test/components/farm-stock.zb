@@ -1,7 +1,8 @@
 <script>
   'use route /farm/stock'
+  let counted = 0
   export async function load() {
     return { title: 'Stock' }
   }
 </script>
-<farm-stock farmer=""><h1>Stock</h1><p class="for">Stock for {farmer}</p></farm-stock>
+<farm-stock farmer=""><h1>Stock</h1><button class="count" type="button" onclick={() => counted++}>Counted {counted}</button><p class="for">Stock for {farmer}</p></farm-stock>

@@ -1,0 +1,4 @@
+<error-page status={0}>
+  <h1 class="oops">{status === 404 ? 'Nothing here' : 'That broke'}</h1>
+  <a href="/">Back home</a>
+</error-page>

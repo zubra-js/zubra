@@ -153,8 +153,11 @@ jobs:
         working-directory: actions
       - run: npm test
         working-directory: actions
-      # @zubra/router ('use route': the table, load, and pages on Node's http).
+      # @zubra/router ('use route': the table, layouts, load, and the pages in Chromium with
+      # and without JavaScript).
       - run: npm ci
+        working-directory: router
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
         working-directory: router
       - run: npm test
         working-directory: router

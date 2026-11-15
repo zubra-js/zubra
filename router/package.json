@@ -28,7 +28,8 @@
   "devDependencies": {
     "@zubra/compiler": "file:../compiler",
     "@zubra/runtime": "file:../runtime",
-    "@zubra/server": "file:../server"
+    "@zubra/server": "file:../server",
+    "playwright": "1.63.0"
   },
   "files": [
     "src",

@@ -27,11 +27,12 @@ const router = await createRouter({ zubra, components: 'components' });
 createServer(async (req, res) => {
   if (zubra.handle(req, res)) return;         // the components' browser modules
   if (await router.handle(req, res)) return;  // a GET or HEAD to a route
-  res.writeHead(404).end('Not found');        // the app's own routes, files, 404
+  // …the app's own routes and files…
+  await router.notFound(req, res);            // the 404 page
 }).listen(3000);
 ```
 
-`router.listener` is that handler with a plain 404, and `router.fetch(request)` answers fetch-style servers (a `Response`, or `null` when the path isn't a route).
+`router.listener` is a route or the 404 page, for `createServer` on its own, and `router.fetch(request)` answers fetch-style servers (a `Response`, or `null` when the path isn't a route; `router.notFoundResponse(request)` is the 404).
 
 ## Routes
 
@@ -83,8 +84,10 @@ What it returns:
 
 A layout's `load` works the same way, and for its whole section: what it returns reaches every layout and page inside it that declares the prop, and when it answers with `notFound()`, `redirect()` or `show()`, the loads inside it don't run. A `show()` from a layout takes the layout's place, inside the layouts over it; from a `root` layout, that is the app's shell.
 
-A `load` that throws gets a plain 500, and `onError(error, request)` is told.
+## Errors
 
-## Not yet
+An unknown path (`router.notFound(req, res)` at the end of the app's handlers, or `router.listener`), `notFound()`, and a `load` that throws render inside `app.zb`, with status 404 or 500. `error.zb`, if the app has one, goes in the shell's slot with a `status` prop; otherwise a heading does. A shell that declares an `error` prop is given `{ status }`. The message never reaches the browser; `onError(error, request)` is told. With no shell, or when the shell can't render, the response is plain text.
 
-This is stage A4 of `plan/roadmap-app.md`. Next: a 404 or a thrown `load` rendered inside the app's shell (A6); today they are plain text. Pages are whole page loads; there is no client-side navigation.
+## What it doesn't do
+
+Client-side navigation: links load pages. Posts: those are `@zubra/actions`, or the app's own handler. Static files, sessions and caching are the app's server's. `docs/router.md` in the repository has the whole reference.

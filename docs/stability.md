@@ -134,6 +134,15 @@ A sibling: needed only for `'use collection'` state.
 | `@zubra/sync/sqlite` | Supported | Same | Standup |
 | `@zubra/sync/durable` | Supported | Sync and Actions on a Cloudflare Worker | Standup worker, Tailgate's Worker deploy |
 
+### `@zubra/router`
+
+A sibling: needed only for `'use route'` and `'use layout'` components, in an app with no host framework. New in this release, so its options may still move in a minor.
+
+| Entry | Tier | Tested by | Used by |
+|---|---|---|---|
+| `@zubra/router` | Supported | Plugin job (`router/`, with and without JavaScript in Chromium) | Its tests |
+| `@zubra/router/table` | Experimental | Same | The router itself: the table's rules without files or a compiler |
+
 ### Tooling packages
 
 | Entry | Tier | Tested by | Used by |

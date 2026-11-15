@@ -37,6 +37,9 @@ export { RouteError };
 
 const SOURCE = /\.zb(?:\.[jt]sx)?$/;
 
+/** The component shown in the shell's slot for a 404 or a 500, when the app has one. */
+const ERROR = 'error';
+
 let compiler;
 async function compilerModule() {
   if (!compiler) {
@@ -100,6 +103,9 @@ export async function createRouter({
     return declaredBy.get(name);
   };
   const isRoot = new Map(layouts.map((layout) => [layout.name, layout.root]));
+  // Errors render inside the shell, with `error.zb` in its slot when the app has one.
+  const hasShell = layouts.some((layout) => layout.name === APP);
+  const hasErrorPage = zubra.names.includes(ERROR);
 
   // The server halves of those with a `load`, written to the cache and imported. Their relative
   // imports point back at the source; each is written beside its place and renamed in, so a
@@ -118,17 +124,52 @@ export async function createRouter({
   const match = matcher(pages, await urlPattern());
 
   /** A Response for a GET or HEAD to a route, or null. `extra` (`{ req }`, `{ c }`) goes to `context`. */
-  async function respond(request, extra = {}) {
+  async function respond(request, extra = {}, { unknown = false } = {}) {
     if (request.method !== 'GET' && request.method !== 'HEAD') return null;
     const url = new URL(request.url);
-    const found = match(url.pathname);
-    if (!found) return null;
-    const { page, params } = found;
-    const route = { path: url.pathname, pattern: page.pattern, params };
+    const found = unknown ? null : match(url.pathname);
+    if (!found && !unknown) return null;
+    const { page = null, params = {} } = found ?? {};
+    const route = { path: url.pathname, pattern: page?.pattern ?? null, params };
     const headers = new Headers();
     const fail = (error) => {
       onError(error, request);
-      return text(500, 'Internal error', headers);
+      return errorPage(500);
+    };
+    const document = async (body, title) => {
+      const extraHead = typeof head === 'function' ? await head({ url, request, route }) : head;
+      const titled = title == null ? '' : `<title>${escapeText(title)}</title>`;
+      return `<!doctype html>\n<html lang="${escapeAttribute(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${titled}${extraHead ?? ''}</head><body>${body}</body></html>`;
+    };
+
+    // A 404 or a 500, inside the app's shell where there is one: `error.zb` in the shell's slot
+    // (or a heading), and `{ status }` as the shell's `error` prop if it declares one. Never
+    // the error's message. Plain text when there is no shell, or the shell itself can't render.
+    const errorPage = async (status) => {
+      const plain = () => text(status, status === 404 ? 'Not found' : 'Internal error', headers);
+      if (!hasShell || threw.has(APP)) return plain();
+      try {
+        const answer = loads.has(APP) ? await run(APP) : {};
+        if (answer[ANSWER]) return plain();
+        const error = { status };
+        const give = (name, data) => {
+          const declared = propsOf(name);
+          const props = {};
+          if (declared.has('route')) props.route = route;
+          for (const [key, value] of Object.entries(data)) if (declared.has(key)) props[key] = value;
+          if (declared.has('error')) props.error = error;
+          return props;
+        };
+        const rendering = zubra.page();
+        const words = status === 404 ? 'Page not found' : 'Something went wrong';
+        const inside = hasErrorPage ? rendering.render(ERROR, give(ERROR, { status })) : `<h1>${words}</h1>`;
+        const html = rendering.finish(await document(rendering.render(APP, give(APP, answer), { default: inside }), words));
+        headers.set('content-type', 'text/html; charset=utf-8');
+        return new Response(request.method === 'HEAD' ? null : html, { status, headers });
+      } catch (failure) {
+        onError(failure, request);
+        return plain();
+      }
     };
 
     // What every `load` of this request is given. The app's context is made once, and so is the
@@ -142,10 +183,19 @@ export async function createRouter({
       return given;
     };
     const loaded = new Map();
+    const threw = new Set();
     const run = async (name) => {
-      if (!loaded.has(name)) loaded.set(name, (await loads.get(name)(await loadArguments())) ?? {});
+      if (!loaded.has(name)) {
+        try {
+          loaded.set(name, (await loads.get(name)(await loadArguments())) ?? {});
+        } catch (error) {
+          threw.add(name);
+          throw error;
+        }
+      }
       return loaded.get(name);
     };
+    if (!page) return errorPage(404);
 
     // The layouts, outermost first, then the page. Each `load` runs in that order, and what the
     // ones outside returned reaches the ones inside as props they declare. A `show()` puts
@@ -170,7 +220,7 @@ export async function createRouter({
           const answer = last && leaf.props ? leaf.props : loads.has(name) ? await run(name) : {};
           switch (answer[ANSWER]) {
             case 'notFound':
-              return text(404, 'Not found', headers);
+              return errorPage(404);
             case 'redirect':
               headers.set('location', answer.location);
               return new Response(null, { status: answer.status, headers });
@@ -206,9 +256,7 @@ export async function createRouter({
       for (const { name, props, last } of parts.reverse()) {
         body = last ? rendering.render(name, props) : rendering.render(name, props, { default: body });
       }
-      const extraHead = typeof head === 'function' ? await head({ url, request, route }) : head;
-      const titled = title === undefined ? '' : `<title>${escapeText(title)}</title>`;
-      html = rendering.finish(`<!doctype html>\n<html lang="${escapeAttribute(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${titled}${extraHead ?? ''}</head><body>${body}</body></html>`);
+      html = rendering.finish(await document(body, title));
     } catch (error) {
       return fail(error);
     }
@@ -227,15 +275,29 @@ export async function createRouter({
     return true;
   }
 
-  /** For `http.createServer(router.listener)`: a route, or a plain 404. */
+  /**
+   * The 404 page, for the end of the app's handlers: inside `app.zb` (with `error.zb` in its
+   * slot, if there is one) for a GET or HEAD, plain text otherwise.
+   */
+  async function notFound(req, res) {
+    let response = null;
+    try { response = await respond(toRequest(req), { req }, { unknown: true }); } catch {}
+    if (response) await send(response, res);
+    else res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found');
+  }
+
+  /** For `http.createServer(router.listener)`: a route, or the 404 page. */
   async function listener(req, res) {
-    if (!(await handle(req, res))) res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found');
+    if (!(await handle(req, res))) await notFound(req, res);
   }
 
   return {
     handle,
     listener,
-    fetch: respond,
+    notFound,
+    fetch: (request, extra) => respond(request, extra),
+    /** Fetch-style servers: the 404 page as a Response (see `notFound`). */
+    notFoundResponse: async (request, extra) => (await respond(request, extra, { unknown: true })) ?? text(404, 'Not found'),
     /** The pages, most specific first: `[{ name, pattern, params, load }]`. */
     routes: () => pages.map(({ name, pattern, params, load, layouts }) => ({ name, pattern, params, load, layouts })),
     /** The layouts, outermost first: `[{ name, pattern, root }]` (`app.zb` is `/`). */

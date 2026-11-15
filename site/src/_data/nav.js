@@ -19,6 +19,7 @@ export default [
   { group: 'Beyond the browser', pages: [
     { file: 'docs/actions.md', label: 'Actions (`@zubra/actions`)' },
     { file: 'docs/sync.md', label: 'Sync (`@zubra/sync`)' },
+    { file: 'docs/router.md', label: 'Router (`@zubra/router`)' },
   ] },
   { group: 'Coming from a framework', pages: [
     { file: 'docs/guide/for-react-developers.md', label: 'React developers' },

@@ -124,7 +124,7 @@ test("load and what only it imports never reach the browser", async () => {
 test('notFound() is a 404, redirect() sends the browser on', async () => {
   const missing = await get('/farms/nowhere');
   assert.equal(missing.status, 404);
-  assert.equal(await missing.text(), 'Not found');
+  assert.match(await missing.text(), /<app-shell[\s\S]*<h1 class="oops">Nothing here<\/h1>/);
   const moved = await get('/old');
   assert.equal(moved.status, 303);
   assert.equal(moved.headers.get('location'), '/farms/new');
@@ -203,7 +203,10 @@ test('an unknown path, a post and a thrown load', async () => {
   assert.equal(await head.text(), '');
   const broken = await get('/broken');
   assert.equal(broken.status, 500);
-  assert.equal(await broken.text(), 'Internal error', 'never the message');
+  const page = await broken.text();
+  assert.match(page, /<header class="public">[\s\S]*<main data-error="500">[\s\S]*<h1 class="oops">That broke<\/h1>/, 'inside the shell');
+  assert.match(page, /<title>Something went wrong<\/title>/);
+  assert.doesNotMatch(page, /database/, 'never the message');
   assert.equal(errors.at(-1).message, 'the database is down');
 });
 
@@ -217,7 +220,10 @@ test("Node's http: handle answers routes, the listener answers everything else w
   assert.match(await page.text(), /<h1>Ridge Orchard<\/h1>/);
   const missing = await fetch(`${base}/nowhere`);
   assert.equal(missing.status, 404);
-  assert.equal(await missing.text(), 'Not found');
+  const notFound = await missing.text();
+  assert.match(notFound, /<header class="public">[\s\S]*<main data-error="404">[\s\S]*<error-page[\s\S]*<h1 class="oops">Nothing here<\/h1>/);
+  assert.match(notFound, /<title>Page not found<\/title>/);
+  assert.equal((await fetch(`${base}/nowhere`, { method: 'POST', body: 'x' })).status, 404);
   // handle() leaves what isn't a route to the app.
   const chained = createServer(async (req, res) => {
     if (await router.handle(req, res)) return;
@@ -315,6 +321,46 @@ test('layout mistakes are named', async () => {
     await tableError({ 'home-page.zb': page, 'app.zb': "<script>'use layout /'\nexport function load() { return { year: 2026 } }</script>\n<app-shell year={0}><zb-slot></zb-slot></app-shell>\n" }),
     null,
   );
+});
+
+test('errors without error.zb get a heading in the shell; without a shell, or when the shell breaks, plain text', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-router-errors-'));
+  const told = [];
+  const build = async (files) => {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    for (const [path, source] of Object.entries(files)) writeFileSync(join(dir, path), source);
+    told.length = 0;
+    return createRouter({ zubra: createZubra({ components: dir }), components: dir, cacheDir: join(dir, '.cache'), onError: (error) => told.push(error.message) });
+  };
+  const home = "<script>'use route /'</script>\n<home-page></home-page>\n";
+  const boom = "<script>'use route /boom'\nexport function load() { throw new Error('secret detail') }</script>\n<boom-page></boom-page>\n";
+  try {
+    const shelled = await build({ 'home-page.zb': home, 'boom-page.zb': boom, 'app.zb': '<app-shell><header>Site</header><zb-slot></zb-slot></app-shell>\n' });
+    const missing = await shelled.notFoundResponse(new Request('http://localhost/nowhere'));
+    assert.equal(missing.status, 404);
+    assert.match(await missing.text(), /<header>Site<\/header>[\s\S]*<h1>Page not found<\/h1>/);
+    const broke = await shelled.fetch(new Request('http://localhost/boom'));
+    assert.equal(broke.status, 500);
+    const html = await broke.text();
+    assert.match(html, /<header>Site<\/header>[\s\S]*<h1>Something went wrong<\/h1>/);
+    assert.doesNotMatch(html, /secret detail/);
+    // notFoundResponse is always the 404, even for a path that is a route.
+    assert.equal((await shelled.notFoundResponse(new Request('http://localhost/'))).status, 404);
+    assert.equal(await shelled.fetch(new Request('http://localhost/nowhere')), null, "fetch still leaves an unknown path to the app");
+
+    const bare = await build({ 'home-page.zb': home, 'boom-page.zb': boom });
+    assert.equal(await (await bare.notFoundResponse(new Request('http://localhost/nowhere'))).text(), 'Not found');
+    assert.equal(await (await bare.fetch(new Request('http://localhost/boom'))).text(), 'Internal error');
+
+    const badShell = await build({ 'home-page.zb': home, 'app.zb': "<script>'use layout /'\nexport function load() { throw new Error('shell down') }</script>\n<app-shell><zb-slot></zb-slot></app-shell>\n" });
+    const down = await badShell.fetch(new Request('http://localhost/'));
+    assert.equal(down.status, 500);
+    assert.equal(await down.text(), 'Internal error');
+    assert.deepEqual(told, ['shell down'], 'told once, and the shell is not tried again');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('createRouter needs the app\'s createZubra()', async () => {

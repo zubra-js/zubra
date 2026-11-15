@@ -1,7 +1,11 @@
-<app-shell route={{}}>
+<script>
+  let open = false
+</script>
+<app-shell route={{}} error={null}>
   <header class="public">
+    <button class="menu" type="button" onclick={() => (open = !open)}>Menu {open ? 'open' : 'closed'}</button>
     <a href="/" aria-current={route.path === '/' ? 'page' : null}>Home</a>
     <a href="/about" aria-current={route.path === '/about' ? 'page' : null}>About</a>
   </header>
-  <main><zb-slot></zb-slot></main>
+  <main data-error={error ? error.status : null}><zb-slot></zb-slot></main>
 </app-shell>

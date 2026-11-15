@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
 /** The published packages, by folder. A new published package goes here and into the page. */
-export const PACKAGES = ['runtime', 'compiler', 'server', 'plugin', 'actions', 'sync', 'editors/language-server', 'prettier-plugin', 'create'];
+export const PACKAGES = ['runtime', 'compiler', 'server', 'plugin', 'actions', 'sync', 'router', 'editors/language-server', 'prettier-plugin', 'create'];
 
 export const TIERS = ['Stable', 'Supported', 'Experimental'];
 

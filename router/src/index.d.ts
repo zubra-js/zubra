@@ -46,7 +46,7 @@ export interface RouterOptions {
   components?: string;
   /** Where the routes' server halves are written (default `node_modules/.cache/zubra-router`). */
   cacheDir?: string;
-  /** Called when a `load` throws; the browser gets a plain 500. */
+  /** Called when a `load` or a render throws; the browser gets the 500 page, never the message. */
   onError?(error: unknown, request: Request): void;
   /** The document's language (default `en`). */
   lang?: string;
@@ -78,7 +78,11 @@ export interface Route {
 export interface Router {
   /** Node's http: answers a GET or HEAD to a route and resolves true, or resolves false. */
   handle(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
-  /** For `http.createServer(router.listener)`: a route, or a plain 404. */
+  /** The 404 page, for the end of the app's handlers: inside `app.zb` for a GET or HEAD. */
+  notFound(req: IncomingMessage, res: ServerResponse): Promise<void>;
+  /** Fetch-style servers: the 404 page as a Response. */
+  notFoundResponse(request: Request, extra?: { req?: IncomingMessage; c?: unknown }): Promise<Response>;
+  /** For `http.createServer(router.listener)`: a route, or the 404 page. */
   listener(req: IncomingMessage, res: ServerResponse): Promise<void>;
   /** Fetch-style servers: the page's Response, or null when the request isn't a route's. */
   fetch(request: Request, extra?: { req?: IncomingMessage; c?: unknown }): Promise<Response | null>;
