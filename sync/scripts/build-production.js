@@ -14,7 +14,7 @@ const to = join(root, 'dist/production');
 const check = process.argv.includes('--check');
 
 /** What a page loads: the store and 'use collection' (index), the connection, and its peers. */
-export const BROWSER = ['index.js', 'connect.js', 'webrtc.js'];
+export const BROWSER = ['index.js', 'connect.js', 'webrtc.js', 'follow.js'];
 
 /** A module, minified, under a header that points back to its source. */
 export function minified(source, file) {

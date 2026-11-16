@@ -14,6 +14,10 @@
       "types": "./src/connect.d.ts",
       "default": "./src/connect.js"
     },
+    "./follow": {
+      "types": "./src/follow.d.ts",
+      "default": "./src/follow.js"
+    },
     "./server": {
       "types": "./src/server.d.ts",
       "default": "./src/server.js"
