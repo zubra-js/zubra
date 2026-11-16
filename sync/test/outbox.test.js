@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { outboxOf, batches } from '../src/connect.js';
+import { outboxOf, batches } from '../src/push.js';
 
 test('a push that was already out never takes a change added since', () => {
   const saved = [];

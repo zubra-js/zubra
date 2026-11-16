@@ -45,61 +45,6 @@ export function deviceClock(client) {
   return { tick, see };
 }
 
-/**
- * @internal Changes split into pushes of at most `count` changes and about `bytes` bytes of JSON,
- * under the server's default limits (1000 changes, 1 MiB), keeping their order.
- */
-export function batches(changes, { count = 500, bytes = 512 * 1024 } = {}) {
-  const out = [];
-  let batch = [];
-  let size = 0;
-  for (const change of changes) {
-    const length = JSON.stringify(change).length + 1;
-    if (batch.length && (batch.length >= count || size + length > bytes)) {
-      out.push(batch);
-      batch = [];
-      size = 0;
-    }
-    batch.push(change);
-    size += length;
-  }
-  if (batch.length) out.push(batch);
-  return out;
-}
-
-/**
- * @internal The changes waiting to be pushed. A push takes a snapshot (`take`), and when the
- * server has it, exactly those changes leave (`done`): by identity, not by count, so a change
- * added while an earlier push was out is never dropped by it. Two pushes can overlap (the debounce
- * and the poll loop); this is why that's safe.
- *
- * It keeps one change per field: a newer one replaces what's waiting for the same field (this
- * device's later write wins anyway), so hours of typing offline wait as one change per field,
- * not one per keystroke, and still fit in localStorage.
- */
-export function outboxOf(changes = [], persist = () => {}) {
-  const same = (a, b) => a.collection === b.collection && a.key === b.key && a.field === b.field;
-  let pending = [];
-  for (const change of changes) pending = [...pending.filter((other) => !same(other, change)), change];
-  return {
-    get size() {
-      return pending.length;
-    },
-    pending: () => pending.slice(),
-    add(change) {
-      pending = pending.filter((other) => !same(other, change));
-      pending.push(change);
-      persist(pending);
-    },
-    take: () => pending.slice(),
-    done(sent) {
-      const gone = new Set(sent);
-      pending = pending.filter((change) => !gone.has(change));
-      persist(pending);
-    },
-  };
-}
-
 const remember = (name, fallback) => {
   try { return localStorage.getItem(name) ?? fallback(); } catch { return fallback(); }
 };
@@ -111,7 +56,7 @@ const keep = (name, value) => { try { localStorage.setItem(name, value); } catch
  * list of them), e.g. `{ seats: 'showing-12/', brands: true }`; leave it out for everything.
  * Returns `{ flush, pull, stop }`.
  */
-export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrtc = false, scope = null } = {}) {
+export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrtc = false, scope = null, write = true } = {}) {
   const base = url.replace(/\/$/, '');
   // The scope goes with every pull and live request. Each scope keeps its own cursor: a page that
   // moves to another showing reads that showing from the start, not from where the last one was.
@@ -124,9 +69,6 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   });
   const clocks = deviceClock(client);
   let cursor = remember(cursorName, () => '0');
-  const outbox = outboxOf(JSON.parse(remember('zubra-sync:outbox', () => '[]')), (pending) =>
-    keep('zubra-sync:outbox', JSON.stringify(pending)));
-
   // This device's stamps, kept here the moment a field is edited. Storing them beside the document
   // takes an await, and a change from elsewhere merged in that time must still lose to them.
   const mine = new Map(); // JSON [collection, key] → { field: clock }
@@ -137,60 +79,30 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
     mine.get(id)[field] = newest(stamp, mine.get(id)[field]);
   };
 
-  // Local writes: stamp each field, remember the stamp beside the document, queue it.
-  const off = onWrite(async (collection, key, fields) => {
-    const stamped = {};
-    for (const [field, value] of Object.entries(fields)) {
-      const stamp = clocks.tick();
-      stamped[field] = stamp;
-      const change = { collection, key, field, value, clock: stamp };
-      own(change);
-      outbox.add(change);
-    }
-    const doc = (await currentStore().get(collection, key)) ?? {};
-    await currentStore().set(collection, key, { [CLOCKS]: { ...doc[CLOCKS], ...stamped } });
-    schedule();
-  });
-
-  let timer = null;
-  let warned = false;
-  const schedule = () => {
-    clearTimeout(timer);
-    timer = setTimeout(flush, 30);
-  };
-
-  async function flush() {
-    if (!outbox.size) return;
-    // In batches the server takes (at most 1000 changes or 1 MiB a push by default), so a device
-    // back from hours offline with a long outbox still gets it all through.
-    for (const sending of batches(outbox.take())) if (!(await send(sending))) return;
-  }
-
-  /** Push one batch. True when the server has it. */
-  async function send(sending) {
-    try {
-      const response = await fetch(`${base}/push`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ changes: sending }),
-      });
-      if (!response.ok) {
-        // A refused write is kept (it may be allowed later), but say why once: a server with no
-        // `authorize` refuses every write from pages, and a silent outbox looks like a bug.
-        if (response.status === 403 && !warned) {
-          warned = true;
-          const why = await response.json().then((body) => body?.error, () => '');
-          console.warn(`@zubra/sync: the server refused this page's changes${why ? `: ${why}` : ''}`);
-        }
-        return false;
-      }
-      outbox.done(sending);
-      return true;
-    } catch {
-      // Offline: the outbox stays (in localStorage too), and goes with the next flush.
-      return false;
-    }
-  }
+  // Local writes: stamped here, as they're made (their clocks are the write's own); queued and
+  // pushed by push.js, which a page that writes loads as it connects. `write: false` (a page whose
+  // server lets it read only): it isn't loaded, and edits stay on this device unsent.
+  let pusher = null;
+  const waiting = []; // stamped before push.js was here
+  const off = write
+    ? onWrite((collection, key, fields) => {
+        const changes = Object.entries(fields).map(([field, value]) => {
+          const change = { collection, key, field, value, clock: clocks.tick() };
+          own(change);
+          return change;
+        });
+        if (pusher) pusher.add(changes);
+        else waiting.push(...changes);
+      })
+    : () => {};
+  const pushing = write
+    ? import('./push.js').then(({ pushes }) => {
+        pusher = pushes(base);
+        if (waiting.length) pusher.add(waiting.splice(0));
+        return pusher;
+      })
+    : null;
+  const flush = () => (pusher ? pusher.flush() : Promise.resolve());
 
   async function pull() {
     let body;
@@ -325,30 +237,10 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   const loop = setInterval(() => flush().then(() => (open ? undefined : pull())), interval);
   const online = () => flush().then(pull);
   addEventListener('online', online);
-  // What's still waiting to be sent is newer than what's stored wherever the store says otherwise:
-  // a tab that closed with writes queued can leave the stored value behind the outbox.
-  async function replay() {
-    const byDoc = new Map();
-    for (const change of outbox.pending()) {
-      const id = JSON.stringify([change.collection, change.key]);
-      byDoc.set(id, [...(byDoc.get(id) ?? []), change]);
-    }
-    for (const changes of byDoc.values()) {
-      const { collection, key } = changes[0];
-      const doc = (await currentStore().get(collection, key)) ?? {};
-      const known = { ...doc[CLOCKS] };
-      const fields = {};
-      for (const change of changes) {
-        if (known[change.field] && known[change.field] >= change.clock) continue;
-        known[change.field] = change.clock;
-        fields[change.field] = change.value;
-      }
-      if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known });
-    }
-  }
-
   // Components wait for this first pull before applying what's stored (index.js: fresh first).
-  const first = (applying = applying.then(replay).catch(() => {})).then(flush).then(pull);
+  // What's still waiting to be sent (push.js) is put back first: a tab that closed with writes
+  // queued can leave the stored value behind them.
+  const first = (pushing ? pushing.then((started) => (applying = applying.then(started.replay).catch(() => {}))) : Promise.resolve()).then(flush).then(pull);
   startingPull(first);
   first.then(() => meshing).then(listen);
   return {
@@ -364,7 +256,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
       source?.close();
       clearTimeout(retry);
       clearInterval(loop);
-      clearTimeout(timer);
+      pusher?.stop();
       removeEventListener('online', online);
     },
   };
