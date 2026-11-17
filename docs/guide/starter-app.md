@@ -57,7 +57,7 @@ With `--typescript`, `hello-counter.zb` is `<script lang="ts">` with an `interfa
 | `test/app.test.js` | Starts the server and uses the page in Chromium twice, with JavaScript and without. |
 | `AGENTS.md`, `skills/zubra-server/` | The same on one page for the server: rendering a page, a function on the server, what renders where. |
 
-`npm run dev` restarts the server when `server.js` changes, and an edited component shows when the page is reloaded. The tutorial's [server rendering](07-server-rendering.md) and [forms that post to the server](09-server-actions.md) chapters explain each line of `server.js`, and [`@zubra/router`](../router.md) adds routes, layouts and a `load` per page to the same server.
+`npm run dev` restarts the server when `server.js` or anything in `src/` changes, so an edited component or `'use server'` function is there when the page is reloaded, and a component that doesn't compile shows its error in the page as well as the terminal. The tutorial's [server rendering](07-server-rendering.md) and [forms that post to the server](09-server-actions.md) chapters explain each line of `server.js`, and [`@zubra/router`](../router.md) adds routes, layouts and a `load` per page to the same server.
 
 ## Making it yours
 

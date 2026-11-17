@@ -1,7 +1,8 @@
 // The whole server: it renders the page with its components already in the HTML, serves their
 // browser modules, and runs the form's server function. No bundler and no build step.
 //
-//   npm run dev     restarts when this file changes; an edited component shows on reload
+//   npm run dev     restarts when this file or anything in src/ changes, so an edited component
+//                   or 'use server' function is there when you reload
 //   npm start       the same server with NODE_ENV=production (compiled once, cached)
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -33,11 +34,15 @@ export const server = createServer(async (req, res) => {
     // 3. The page. Without JavaScript the form posts, the server redirects back here, and
     //    `actions.result()` has what the function returned, once.
     const sent = actions.result(req, (name, value) => res.setHeader(name, value));
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(home(sent?.value));
+    // (Rendered before the status is sent: a component that doesn't compile is a 500, not a 200.)
+    const html = home(sent?.value);
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html);
   } catch (error) {
     console.error(error);
-    if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain' });
-    res.end('Something went wrong');
+    if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+    // In development the page says what the terminal says: a component's error comes with its
+    // file, line and often a fix.
+    res.end(production ? 'Something went wrong' : String(error?.message ?? error));
   }
 });
 

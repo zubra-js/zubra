@@ -126,7 +126,8 @@ test('the server app: a Node server, a form with a server function, no bundler, 
   assert.deepEqual(Object.keys(manifest.dependencies).sort(), ['@zubra/actions', '@zubra/compiler', '@zubra/runtime', '@zubra/server']);
   for (const name of Object.keys(manifest.dependencies)) assert.equal(manifest.dependencies[name], `^${version}`);
   assert.deepEqual(Object.keys(manifest.devDependencies), ['playwright']);
-  assert.equal(manifest.scripts.dev, 'node --watch server.js');
+  // Restarts for src/ too: a 'use server' function is loaded once, at start.
+  assert.equal(manifest.scripts.dev, 'node --watch-path=src --watch-path=server.js server.js');
   const server = readFileSync(join(dir, 'server.js'), 'utf8');
   assert.match(server, /heading: 'My Shop'/);
   assert.match(server, /<title>My Shop<\/title>/);

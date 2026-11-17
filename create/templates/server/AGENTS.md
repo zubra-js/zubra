@@ -4,7 +4,7 @@ A server-rendered app with [Zubra](https://github.com/journey-to-code-org/zubra)
 
 ## Commands
 
-`npm run dev` runs the app at http://localhost:3000: it restarts when `server.js` changes, and an edited component shows when the page is reloaded. `npm start` is the same server with `NODE_ENV=production` (components compiled once and cached). `npm test` starts the server and uses the page in Chromium, with JavaScript and with it turned off (`npx playwright install chromium` once). `npx zubra check src/components/*.zb` checks every component and prints each error with a caret and a fix; it should print `no errors` after every change, and adding `--server` also lists what a component's server HTML leaves for the browser.
+`npm run dev` runs the app at http://localhost:3000: it restarts when `server.js` or anything in `src/` changes, so an edited component or `'use server'` function is there when the page is reloaded (data kept in memory, like `src/notes.js`, starts over), and a component that doesn't compile shows its error in the page as well as the terminal. `npm start` is the same server with `NODE_ENV=production` (components compiled once and cached). `npm test` starts the server and uses the page in Chromium, with JavaScript and with it turned off (`npx playwright install chromium` once). `npx zubra check src/components/*.zb` checks every component and prints each error with a caret and a fix; it should print `no errors` after every change, and adding `--server` also lists what a component's server HTML leaves for the browser.
 
 ## Where things are
 
