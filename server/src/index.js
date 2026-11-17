@@ -221,7 +221,7 @@ export function createZubra({ components = 'components', packages = [], prefix =
     devtools,
     base,
     imports: { ...packageImports, ...imports },
-    syncImports: syncDir ? { '@zubra/sync': `${base}/sync/index.js`, '@zubra/sync/connect': `${base}/sync/connect.js` } : {},
+    syncImports: syncDir ? { '@zubra/sync': `${base}/sync/index.js`, '@zubra/sync/connect': `${base}/sync/connect.js`, '@zubra/sync/follow': `${base}/sync/follow.js` } : {},
     needs,
     where: root,
     assets,

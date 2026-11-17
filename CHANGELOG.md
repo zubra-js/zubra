@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **`follow()` from `@zubra/sync/follow`: a connection for a page that only reads** (experimental). A page whose server writes its documents and never lets a page write loaded `connect()`'s outbox, pushes, presence and peer code for nothing. `follow()` pulls and listens exactly as `connect()` does (the same cursor, scope, merge by clock and reconnecting, tested against the same cases) and has none of the rest: 3.5 KB compressed against 4.9 on a read-only menu page. An edit on such a page stays on that device and is reported once in the console. `connect()` and every existing page are unchanged. `@zubra/server` maps and serves it beside `connect.js`.
+
 ## 5.20.0 — 2026-11-16
 
 ### Added

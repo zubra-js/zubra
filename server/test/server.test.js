@@ -591,7 +591,7 @@ test('in production @zubra/sync is sent from its production build: minified, the
     const response = await zubra.fetch(new Request(`http://localhost/_zubra/sync/${file}`));
     return { status: response.status, text: response.status === 200 ? await response.text() : '' };
   };
-  for (const file of ['index.js', 'connect.js', 'webrtc.js']) {
+  for (const file of ['index.js', 'connect.js', 'webrtc.js', 'follow.js']) {
     const source = readFileSync(join(here, '../../sync/src', file), 'utf8');
     const development = await sent(false, file);
     const production = await sent(true, file);

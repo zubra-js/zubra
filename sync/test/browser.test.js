@@ -38,7 +38,7 @@ const module = (name) => {
 };
 const page = (body, connected = false, component = 'task-item') => `<!doctype html><html><head><meta charset="utf-8">
 <script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': '/runtime/index.js', '@zubra/sync': '/sync/index.js' } })}</script>
-</head><body>${body}<script type="module">import '/components/${component}.js';</script>${connected ? `<script type="module">import { connect } from '/sync/connect.js'; window.link = connect(${JSON.stringify(connected === true ? { interval: 100, live: false } : connected)});</script>` : ''}</body></html>`;
+</head><body>${body}<script type="module">import '/components/${component}.js';</script>${connected?.follow ? `<script type="module">import { follow } from '/sync/follow.js'; window.link = follow(${JSON.stringify(connected.follow)});</script>` : connected ? `<script type="module">import { connect } from '/sync/connect.js'; window.link = connect(${JSON.stringify(connected === true ? { interval: 100, live: false } : connected)});</script>` : ''}</body></html>`;
 
 let server;
 let browser;
@@ -109,6 +109,8 @@ before(async () => {
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
     // Connected with a scope (?scope= is the JSON connect() gets), live, polling once a minute.
     if (url.pathname === '/scoped') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000, scope: JSON.parse(url.searchParams.get('scope')) }));
+    // Following (read-only): ?poll for polling only, ?scope= as /scoped; live otherwise.
+    if (url.pathname === '/following') return res.end(page(`<task-item doc="${doc}"></task-item>`, { follow: url.searchParams.has('poll') ? { interval: 100, live: false } : { interval: 60_000, ...(url.searchParams.has('scope') ? { scope: JSON.parse(url.searchParams.get('scope')) } : {}) } }));
     res.end(page('<task-item doc="a"></task-item>'));
   });
   await new Promise((done) => server.listen(0, done));
@@ -784,4 +786,122 @@ test('a server with no authorize: the page still works, its edits stay here, and
   assert.equal(refused.length, 1, `said once: ${JSON.stringify(warnings)}`);
   assert.match(refused[0], /pass createSyncServer\(\{ authorize \}\)/);
   await context.close();
+});
+
+// ---- follow(): a read-only connection. The reading half is connect()'s, so these run its reading
+// tests against follow(), and check what a following page leaves out.
+
+/** A page that follows `doc`, with every request path it makes and its console warnings. */
+async function following(doc, query = '') {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  const asked = [];
+  const warnings = [];
+  tab.on('request', (request) => asked.push(`${request.method()} ${new URL(request.url()).pathname}`));
+  tab.on('console', (message) => message.type() === 'warning' && warnings.push(message.text()));
+  await tab.goto(`${base}/following?doc=${doc}${query}`);
+  await ready(tab);
+  return { context, tab, asked, warnings };
+}
+/** Another device, connected, that writes `text` as `doc`'s title. */
+async function writes(doc, text) {
+  const context = await browser.newContext();
+  const writer = await context.newPage();
+  await writer.goto(`${base}/connected?doc=${doc}`);
+  await ready(writer);
+  // What the log has first: a write made before it would carry an older clock than the log's.
+  await writer.evaluate(() => window.link.pull());
+  await writer.fill('.title', text);
+  await stored(writer);
+  await writer.evaluate(() => window.link.flush());
+  return context;
+}
+
+test('follow: a page shows what the log has, then changes as they arrive over the stream, and sends nothing', async () => {
+  const first = await writes('f1', 'Already there');
+  const { context, tab, asked, warnings } = await following('f1');
+  await title(tab, 'Already there');
+  for (let waited = 0; !asked.includes('GET /_zb/sync/live') && waited < 5000; waited += 50) await tab.waitForTimeout(50);
+  const second = await writes('f1', 'Over the stream');
+  await title(tab, 'Over the stream'); // polling is a minute away
+  assert.ok(asked.includes('GET /sync/follow.js'));
+  for (const never of ['GET /sync/connect.js', 'GET /sync/webrtc.js', 'POST /_zb/sync/push', 'POST /_zb/sync/presence', 'POST /_zb/sync/signal']) {
+    assert.ok(!asked.includes(never), `${never}: ${asked.join(', ')}`);
+  }
+  assert.deepEqual(warnings, []);
+  await Promise.all([context.close(), first.close(), second.close()]);
+});
+
+test('follow: without the live stream it polls', async () => {
+  const { context, tab, asked } = await following('f2', '&poll');
+  const writer = await writes('f2', 'By polling');
+  await title(tab, 'By polling');
+  assert.ok(!asked.includes('GET /_zb/sync/live'), asked.join(', '));
+  await Promise.all([context.close(), writer.close()]);
+});
+
+test("follow: an edit on the page stays on this device, isn't sent, and is reported once", async () => {
+  const { context, tab, asked, warnings } = await following('f3');
+  await tab.fill('.title', 'Only here');
+  await tab.fill('.title', 'Only here, twice');
+  await stored(tab);
+  await tab.waitForTimeout(300);
+  assert.ok(!asked.some((request) => request.startsWith('POST ')), asked.join(', '));
+  assert.equal(warnings.length, 1, warnings.join('\n'));
+  assert.match(warnings[0], /follows the log \(follow\(\)\), so its change to "tasks" stays on this device; connect\(\) sends changes/);
+  // The log never had it: a connected device sees nothing for the document.
+  const other = await browser.newContext();
+  const reader = await other.newPage();
+  await reader.goto(`${base}/connected?doc=f3`);
+  await ready(reader);
+  await reader.waitForTimeout(400);
+  assert.doesNotMatch(await reader.inputValue('.title'), /Only here/);
+  // It is kept on this device, as any unconnected page's state is.
+  await tab.reload();
+  await ready(tab);
+  await title(tab, 'Only here, twice');
+  await Promise.all([context.close(), other.close()]);
+});
+
+test('follow: a scope gets, and stores, only the documents asked for, under the cursor connect() would use', async () => {
+  const scope = { tasks: 'fmine' };
+  const { context, tab } = await following('fmine1', `&scope=${encodeURIComponent(JSON.stringify(scope))}`);
+  await tab.waitForTimeout(300);
+  const outside = await writes('ftheirs1', 'Not for that page');
+  const inside = await writes('fmine1', 'For that page');
+  await title(tab, 'For that page');
+  const keys = await tab.evaluate(() => new Promise((done) => {
+    const open = indexedDB.open('zubra-sync');
+    open.onsuccess = () => {
+      const request = open.result.transaction('docs').objectStore('docs').getAllKeys();
+      request.onsuccess = () => done(request.result.map((key) => key.join('/')));
+    };
+  }));
+  assert.ok(keys.includes('tasks/fmine1') && !keys.includes('tasks/ftheirs1'), keys.join(', '));
+  assert.deepEqual(await tab.evaluate(() => Object.keys(localStorage).filter((name) => name.startsWith('zubra-sync:cursor'))), [`zubra-sync:cursor:${JSON.stringify(scope)}`]);
+  await Promise.all([context.close(), outside.close(), inside.close()]);
+});
+
+test('follow: an older change never replaces a newer one, and stop() ends it', async () => {
+  const { context, tab } = await following('f5', '&poll');
+  const one = await writes('f5', 'First');
+  await title(tab, 'First');
+  const two = await writes('f5', 'Second');
+  await title(tab, 'Second');
+  // A change that reaches the log late with an old clock (a device back from offline): the
+  // title's first clock again, with another value. The page pulls it and keeps what's newer.
+  const log = await (await fetch(`${base}/_zb/sync/pull?since=0`)).json();
+  const mine = log.changes.filter((change) => change.key === 'f5' && change.field === 'title');
+  const oldest = mine.find((change) => change.value === 'First');
+  assert.ok(oldest && mine.at(-1).value === 'Second', JSON.stringify(mine));
+  const pushed = await fetch(`${base}/_zb/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ changes: [{ ...oldest, value: 'Stale' }] }) });
+  assert.equal(pushed.status, 200);
+  await tab.evaluate(() => window.link.pull());
+  await tab.waitForTimeout(300);
+  assert.equal(await tab.inputValue('.title'), 'Second');
+  await tab.evaluate(() => window.link.stop());
+  const three = await writes('f5', 'After stopping');
+  await tab.waitForTimeout(500);
+  assert.equal(await tab.inputValue('.title'), 'Second');
+  await Promise.all([context.close(), one.close(), two.close(), three.close()]);
 });

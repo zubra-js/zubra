@@ -142,6 +142,7 @@ A sibling: needed only for `'use collection'` state.
 |---|---|---|---|
 | `@zubra/sync` | Supported | Plugin job (`sync/`, and against the `zubra-sync` binary); local-first example | Standup, Tailgate, CineStack |
 | `@zubra/sync/connect` | Supported | Same | Same |
+| `@zubra/sync/follow` | Experimental | Sync (`browser.test.js`, the `follow:` tests) | A read-only connection: `connect()`'s reading half without the outbox, pushes, presence or peers |
 | `@zubra/sync/server` | Supported | Same | Same |
 | `@zubra/sync/sqlite` | Supported | Same | Standup |
 | `@zubra/sync/durable` | Supported | Sync and Actions on a Cloudflare Worker | Standup worker, Tailgate's Worker deploy |

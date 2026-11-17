@@ -75,6 +75,17 @@ const sync = createSyncServer({ authorize: ({ request, collection, key, field, k
 const response = await sync.fetch(request); // null if it isn't a sync request
 ```
 
+### A page that only reads
+
+A page whose server writes the documents and never lets a page write (a menu with live stock, an order's status) can follow the log instead:
+
+```js
+import { follow } from '@zubra/sync/follow';
+follow(); // the same url, interval, live and scope options as connect()
+```
+
+It pulls and listens exactly as `connect()` does, and leaves out what only a writing page uses: the outbox, pushes, presence and peers. That is about 1.4 KB less to download (3.5 KB against 4.9, compressed). An edit made on such a page stays on that device, and the first one is reported in the console; use `connect()` on any page that writes. The server is the same either way, and `authorize` still decides what the page may read.
+
 ### Who may write
 
 **Without `authorize`, pages may read but not write.** Every push, presence and signal from a page is refused with a 403 that says why, and the page says so once in its console. The server's own `write()` is never asked. This is deliberate: a log that takes any change from anyone lets a visitor set a price, mark an order paid or take every seat.
