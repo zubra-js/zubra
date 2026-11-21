@@ -4,6 +4,8 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 6.0.3 — 2026-11-21
+
 ### Fixed
 
 - **A window listener, the light-DOM slot observer, and an in-flight fetch go when the element leaves the page.** They lived in effect cleanups, and disconnect only pauses the effect graph so a moved element can resume it. The listener stayed on `window` or `document`, the observer stayed on the host, and a `resource()` request kept running and could write into a detached element. Each is now tied to the element being connected: disconnect removes it, and connecting again starts it once. A `zb-await` whose promise settles while the element is detached still shows its result when the element comes back. Pause still does not run every effect cleanup, so a move re-runs only the effects whose inputs changed.

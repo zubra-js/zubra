@@ -3,7 +3,7 @@
   "name": "Zubra DevTools",
   "short_name": "Zubra",
   "description": "A Zubra pane in the Elements panel: a node's component, its .zb line, its props and state, and the signals each binding reads.",
-  "version": "6.0.2",
+  "version": "6.0.3",
   "homepage_url": "https://github.com/zubra-js/zubra/tree/main/editors/devtools",
   "devtools_page": "devtools.html",
   "icons": {
