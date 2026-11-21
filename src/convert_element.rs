@@ -1371,6 +1371,8 @@ impl Converter<'_> {
             reactive: context.reactive.clone(),
             uses_host: false,
         };
+        // Names of listeners registered with `this.#mounted.push(name)` rather than an inline arrow.
+        let mut branch_listeners = Vec::new();
         for statement in statements {
             match statement {
                 Statement::VariableDeclaration(declaration)
@@ -1393,12 +1395,32 @@ impl Converter<'_> {
                                 self.update(tree, expression, &nodes, &texts, &mut context)?;
                             }
                         }
+                    } else if text == "this" || text == "null" {
+                        // `const host = this` and `let off = null`: bookkeeping for a listener that
+                        // lives only while its branch or row is showing.
+                    } else if self.global_listener(tree, &text, &mut context) {
+                        branch_listeners.push(name);
                     } else {
                         self.unsupported(statement.span(), "a statement in the template's setup");
                     }
                 }
                 Statement::ExpressionStatement(expression) => {
                     let expression = expression.expression.without_parentheses();
+                    // `this.#mounted.push(listen)` after `const listen = () => { addEventListener … }`.
+                    if let Expression::CallExpression(call) = expression {
+                        if self.text(call.callee.span()) == "this.#mounted.push" {
+                            if let Some(Expression::Identifier(identifier)) =
+                                call.arguments.first().and_then(Argument::as_expression)
+                            {
+                                if branch_listeners
+                                    .iter()
+                                    .any(|name| name == identifier.name.as_str())
+                                {
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                     match expression {
                         Expression::CallExpression(call) => {
                             self.call(tree, call, &nodes, &mut texts, &mut context)
@@ -1445,6 +1467,9 @@ impl Converter<'_> {
                     }
                 }
                 Statement::ReturnStatement(_) => {}
+                // The listener runs at once when the branch returns on an element already connected.
+                Statement::IfStatement(statement)
+                    if self.text(statement.test.span()) == "this.#started && this.isConnected" => {}
                 other => self.unsupported(other.span(), "a statement in the template's setup"),
             }
         }
@@ -1494,27 +1519,8 @@ impl Converter<'_> {
             let body = argument(0)
                 .map(|expression| self.text(expression.span()).to_owned())
                 .unwrap_or_default();
-            for target in ["window", "document"] {
-                let marker = format!("{target}.addEventListener(");
-                if let Some(at) = body.find(&marker) {
-                    let event = body[at + marker.len()..]
-                        .split(',')
-                        .next()
-                        .and_then(|event| serde_json::from_str::<String>(event.trim()).ok());
-                    let options = body[at + marker.len()..]
-                        .split_once(", listener")
-                        .and_then(|(_, rest)| rest.split(')').next())
-                        .map(|rest| rest.trim_start_matches(',').trim().to_owned())
-                        .unwrap_or_default();
-                    if let (Some(event), Some(listener)) = (event, listener_source(&body)) {
-                        let (modifiers, handler) =
-                            self.listener_text(&listener, &options, target, context);
-                        tree.globals.push(format!(
-                            "<zb-{target} on{event}{modifiers}={{{handler}}}></zb-{target}>"
-                        ));
-                        return;
-                    }
-                }
+            if self.global_listener(tree, &body, context) {
+                return;
             }
         }
         // `(ref)(node)`
@@ -1530,6 +1536,34 @@ impl Converter<'_> {
             }
         }
         self.unsupported(call.span, "a call in the template's setup");
+    }
+
+    /// A `window` or `document` listener, from the arrow passed to `#mounted.push` or bound with
+    /// `const listen = () => { … addEventListener … }`. Puts `<zb-window>` / `<zb-document>` back.
+    fn global_listener(&mut self, tree: &mut Tree, body: &str, context: &mut Unlower) -> bool {
+        for target in ["window", "document"] {
+            let marker = format!("{target}.addEventListener(");
+            let Some(at) = body.find(&marker) else {
+                continue;
+            };
+            let event = body[at + marker.len()..]
+                .split(',')
+                .next()
+                .and_then(|event| serde_json::from_str::<String>(event.trim()).ok());
+            let options = body[at + marker.len()..]
+                .split_once(", listener")
+                .and_then(|(_, rest)| rest.split(')').next())
+                .map(|rest| rest.trim_start_matches(',').trim().to_owned())
+                .unwrap_or_default();
+            if let (Some(event), Some(listener)) = (event, listener_source(body)) {
+                let (modifiers, handler) = self.listener_text(&listener, &options, target, context);
+                tree.globals.push(format!(
+                    "<zb-{target} on{event}{modifiers}={{{handler}}}></zb-{target}>"
+                ));
+                return true;
+            }
+        }
+        false
     }
 
     /// A listener: (its modifiers, its handler), from the emitter's wrapper when it's one.

@@ -194,6 +194,7 @@ function @list(start, end, read, key, create, leave, glide) {
     });
     for (const [id, row] of rows) {
       if (seen.has(id)) continue;
+      row.destroy?.();
       if (leave) leave(nodesOf(row), true);
       else for (const node of nodesOf(row)) node.remove();
     }
@@ -203,9 +204,9 @@ function @list(start, end, read, key, create, leave, glide) {
       const id = ids[index];
       let row = rows.get(id);
       if (!row) {
-        const { nodes, update } = create(item, index);
+        const { nodes, update, destroy } = create(item, index);
         // A row is everything from its first node to its last, with what a list inside it adds later.
-        row = { first: nodes.firstChild, last: nodes.lastChild, update, nodes };
+        row = { first: nodes.firstChild, last: nodes.lastChild, update, destroy, nodes };
         update(item, index); // filled in before it's on the page
       }
       next.set(id, row);
@@ -241,10 +242,13 @@ function @list(start, end, read, key, create, leave, glide) {
 function @when(start, end, read, branches, leaving, leave) {
   let shown = -1;
   let update = null;
+  let branch = null;
   return () => {
     const index = read() ? 0 : 1;
     if (index !== shown) {
       shown = index;
+      branch?.destroy?.(); // a window listener in the branch goes with it
+      branch = null;
       leaving?.(start, end); // slotted content inside goes back to wait, not away
       if (leave && start.nextSibling !== end) {
         const nodes = [];
@@ -255,7 +259,7 @@ function @when(start, end, read, branches, leaving, leave) {
       while (start.nextSibling !== end) start.nextSibling.remove();
       update = null;
       if (branches[index]) {
-        const branch = branches[index]();
+        branch = branches[index]();
         branch.update(); // filled in before it's on the page
         @insert(end.parentNode, branch.nodes, end);
         update = branch.update;
