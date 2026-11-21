@@ -1,0 +1,13 @@
+<!-- A window listener in a slot's fallback. Giving the slot content must take the listener
+     with the fallback, and connecting the element again must not put it back. -->
+<script>
+  function hit() {
+    window.hits = (window.hits ?? 0) + 1
+  }
+</script>
+<zb-slot-listen>
+  <zb-slot>
+    <zb-window onclick={hit}></zb-window>
+    <i>fallback</i>
+  </zb-slot>
+</zb-slot-listen>

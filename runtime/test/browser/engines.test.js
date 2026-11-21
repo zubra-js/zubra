@@ -9,6 +9,8 @@ import { useBrowser, open, here } from './harness.js';
 useBrowser({
   counter: join(here, 'fixtures/counter.zb'),
   'window-count': join(here, 'fixtures/window-count.zb'),
+  'nested-window': join(here, 'fixtures/nested-window.zb'),
+  'slot-listen': join(here, 'fixtures/slot-listen.zb'),
   'pending-move': join(here, 'fixtures/pending-move.zb'),
   'fetch-user': join(here, 'fixtures/fetch-user.zb'),
   'slotted-click': join(here, 'fixtures/slotted-click.zb'),
@@ -106,6 +108,73 @@ test('a window listener is silent while the element is detached or its branch is
   await page.evaluate(() => document.body.append(document.createElement('zb-window-count')));
   await settle(page, 'zb-window-count');
   assert.equal(await click(), 1, 'a new element listens once');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a nested window listener goes when its outer branch or row goes, and stays gone', async () => {
+  const { page, messages } = await open('<zb-nested-window></zb-nested-window>', { modules: ['nested-window'] });
+  const click = () => page.evaluate(() => {
+    const before = window.hits ?? 0;
+    window.dispatchEvent(new MouseEvent('click'));
+    return (window.hits ?? 0) - before;
+  });
+  await settle(page, 'zb-nested-window');
+  assert.equal(await click(), 2, 'the nested condition and the row each listen once');
+  await page.evaluate(() => { document.querySelector('zb-nested-window').rows = []; });
+  await settle(page, 'zb-nested-window');
+  assert.equal(await click(), 1, 'removing the row removes its listener');
+  await page.evaluate(() => { document.querySelector('zb-nested-window').show = false; });
+  await settle(page, 'zb-nested-window');
+  assert.equal(await click(), 0, 'hiding the inner branch removes its listener');
+  await page.evaluate(() => { document.querySelector('zb-nested-window').outer = false; });
+  await settle(page, 'zb-nested-window');
+  assert.equal(await click(), 0, 'hiding the outer branch leaves nothing listening');
+  await page.evaluate(() => {
+    const el = document.querySelector('zb-nested-window');
+    el.remove();
+    document.body.append(el);
+  });
+  await settle(page, 'zb-nested-window');
+  assert.equal(await click(), 0, 'connecting again does not restore a listener whose branch is gone');
+  await page.evaluate(() => {
+    const el = document.querySelector('zb-nested-window');
+    el.outer = true;
+    el.show = true;
+    el.rows = ['a'];
+  });
+  await settle(page, 'zb-nested-window');
+  assert.equal(await click(), 2, 'showing both again listens once each');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a window listener in a slot fallback goes when the slot is filled', async () => {
+  const { page, messages } = await open('<zb-slot-listen></zb-slot-listen>', { modules: ['slot-listen'] });
+  const click = () => page.evaluate(() => {
+    const before = window.hits ?? 0;
+    window.dispatchEvent(new MouseEvent('click'));
+    return (window.hits ?? 0) - before;
+  });
+  await settle(page, 'zb-slot-listen');
+  assert.equal(await click(), 1, 'the fallback listens');
+  await page.evaluate(() => {
+    const el = document.querySelector('zb-slot-listen');
+    window.given = Object.assign(document.createElement('span'), { textContent: 'given' });
+    el.append(window.given);
+  });
+  await settle(page, 'zb-slot-listen');
+  assert.equal(await click(), 0, 'filling the slot removes the fallback listener');
+  await page.evaluate(() => {
+    const el = document.querySelector('zb-slot-listen');
+    el.remove();
+    document.body.append(el);
+  });
+  await settle(page, 'zb-slot-listen');
+  assert.equal(await click(), 0, 'connecting again does not restore the replaced fallback');
+  await page.evaluate(() => document.querySelector('zb-slot-listen').removeChild(window.given));
+  await settle(page, 'zb-slot-listen');
+  assert.equal(await click(), 1, 'the fallback listens once when it shows again');
   assert.deepEqual(messages, []);
   await page.close();
 });

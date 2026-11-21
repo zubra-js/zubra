@@ -1860,6 +1860,7 @@ impl Emitter<'_, '_> {
             out.push_str(line);
             out.push('\n');
         }
+        let mut cascade = String::new();
         let run = if block.updates.is_empty() {
             String::new()
         } else {
@@ -1869,6 +1870,9 @@ impl Emitter<'_, '_> {
                 out.push_str(&format!("{inner}  {update},\n"));
             }
             out.push_str(&format!("{inner}];\n"));
+            // A nested condition or list registers its own listener. Destroying this branch or
+            // row has to destroy that too, or the listener stays on window and #mounted.
+            cascade = format!("for (const update of {updates}) update.destroy?.(); ");
             format!(" for (const update of {updates}) update();")
         };
         let assign = if assign.is_empty() {
@@ -1876,10 +1880,11 @@ impl Emitter<'_, '_> {
         } else {
             format!(" {assign}")
         };
-        let destroy = if block.destroys.is_empty() {
+        let own = block.destroys.join(" ");
+        let destroy = if cascade.is_empty() && own.is_empty() {
             String::new()
         } else {
-            format!(", destroy() {{ {} }}", block.destroys.join(" "))
+            format!(", destroy() {{ {cascade}{own} }}")
         };
         out.push_str(&format!(
             "{inner}return {{ nodes: {}, update({update_params}) {{{assign}{run} }}{destroy} }};\n{close}}}",
