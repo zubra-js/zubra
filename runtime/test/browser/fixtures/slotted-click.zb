@@ -13,5 +13,11 @@
 </script>
 <zb-slotted-click>
   <button type="button" class="inner" onclick={hit}>go</button>
-  <input class="field" onbeforeinput={() => note("beforeinput")} oninput={() => note("input")} onfocusin={() => note("focusin")} onfocusout={() => note("focusout")}>
+  <input
+    class="field"
+    onbeforeinput={() => note("beforeinput")}
+    oninput={() => note("input")}
+    onfocusin={() => note("focusin")}
+    onfocusout={() => note("focusout")}
+  >
 </zb-slotted-click>
