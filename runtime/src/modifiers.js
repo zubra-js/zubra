@@ -4,6 +4,12 @@
 import { effect } from './effect.js';
 import { $r, APPLE, formOf, whileConnected } from './element.js';
 
+/** The node the event came from, before a shadow root retargets `event.target` to its host. */
+const originalTarget = (event) => {
+  const path = event.composedPath?.();
+  return path?.length ? path[0] : event.target;
+};
+
 /**
  * The listener and its options: the handler, read when the event fires, behind the modifiers'
  * checks (`.self`, key filters) and effects (`.prevent`, `.stop`, `.submit`).
@@ -14,7 +20,9 @@ function listen(part, node) {
   const ctrl = m.ctrl || (m.mod && !APPLE());
   const meta = m.meta || (m.mod && APPLE());
   const listener = (event) => {
-    if (m.self && event.target !== node) return;
+    // `.self` is the original target, not the retargeted one: a listener on a shadow host
+    // otherwise sees every inner click as targeting the host (WebKit and Firefox included).
+    if (m.self && originalTarget(event) !== node) return;
     if (m.keys) {
       const key = event.key ?? '';
       if (!m.keys.some((wanted) => (wanted.length === 1 ? key.toLowerCase() === wanted : key === wanted))) return;
@@ -59,7 +67,10 @@ export const prevent = (fn) => function (event) { event.preventDefault(); return
 /** `stop(fn)`: a handler that calls `event.stopPropagation()` first. */
 export const stop = (fn) => function (event) { event.stopPropagation(); return fn?.call(this, event); };
 /** `selfOnly(fn)`: a handler that ignores events from inside the element (`.self`). */
-export const selfOnly = (fn) => function (event) { if (event.target === event.currentTarget) return fn?.call(this, event); };
+export const selfOnly = (fn) => function (event) {
+  if (originalTarget(event) !== event.currentTarget) return;
+  return fn?.call(this, event);
+};
 /** `submit(fn)`: after the handler, submit the element's form, with validation (`.submit`). */
 export const submit = (fn) => function (event) {
   const result = fn?.call(this, event);
