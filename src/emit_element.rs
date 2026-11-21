@@ -615,7 +615,7 @@ pub fn emit(
         out.push_str("  #formRestore = [];\n");
     }
     if members.contains("formDisabled") {
-        out.push_str("  #formDisabled = [];\n  #disabledEarly = false; // disabled before the script ran (see #start)\n");
+        out.push_str("  #formDisabled = [];\n  #disabledEarly = null; // last formDisabledCallback before the script ran, or null (see #start)\n");
     }
 
     // Constructor.
@@ -780,7 +780,7 @@ pub fn emit(
         ));
     }
     if members.contains("formDisabled") {
-        out.push_str("    // Disabled (by a disabled <fieldset>, say) before the script had registered onFormDisabled().\n    if (this.#disabledEarly) for (const run of this.#formDisabled) run(true);\n");
+        out.push_str("    // Disabled (by a disabled <fieldset>, say) before the script had registered onFormDisabled().\n    // The last value is replayed, including false: some engines call the callback before connect.\n    if (this.#disabledEarly !== null) for (const run of this.#formDisabled) run(this.#disabledEarly);\n");
     }
     out.push_str("  }\n");
 
@@ -859,7 +859,7 @@ pub fn emit(
         }
     }
     if members.contains("validity") {
-        out.push_str("    if (this.#validity) {\n      const message = String(this.#validity() || \"\");\n      // The browser shows the message at, and focuses, the first focusable thing the element rendered.\n      const anchor = [...this.querySelectorAll('input:not([type=hidden]), select, textarea, button, [tabindex]:not([tabindex=\"-1\"]), [contenteditable]')].find((node) => !node.closest(\"[data-zb-slotted]\")) ?? this;\n      if (message) this.#internals.setValidity({ customError: true }, message, anchor);\n      else this.#internals.setValidity({});\n    }\n");
+        out.push_str("    if (this.#validity) {\n      const message = String(this.#validity() || \"\");\n      // The browser shows the message at, and focuses, the first focusable thing the element rendered.\n      // Not the host: Safari throws from setValidity unless the anchor is a focusable descendant.\n      const anchor = [...this.querySelectorAll('input:not([type=hidden]), select, textarea, button, [tabindex]:not([tabindex=\"-1\"]), [contenteditable]')].find((node) => !node.closest(\"[data-zb-slotted]\"));\n      try {\n        if (message) this.#internals.setValidity({ customError: true }, message, anchor);\n        else this.#internals.setValidity({});\n      } catch (error) {\n        if (!message) throw error;\n        this.#internals.setValidity({ customError: true }, message);\n      }\n    }\n");
     }
     if members.contains("effects") {
         out.push_str("    this.#runEffects();\n");
@@ -896,7 +896,7 @@ pub fn emit(
             out.push_str("  /** The browser restored a value (back and forward, autofill): what the script gave onFormRestore() runs. */\n  formStateRestoreCallback(state, mode) {\n    for (const run of this.#formRestore) run(state, mode);\n  }\n");
         }
         if members.contains("formDisabled") {
-            out.push_str("  /** Disabled or enabled, by its own attribute or a disabled <fieldset>: what the script gave onFormDisabled() runs. */\n  formDisabledCallback(disabled) {\n    this.#disabledEarly = disabled && !this.#started;\n    for (const run of this.#formDisabled) run(disabled);\n  }\n");
+            out.push_str("  /** Disabled or enabled, by its own attribute or a disabled <fieldset>: what the script gave onFormDisabled() runs. */\n  formDisabledCallback(disabled) {\n    if (!this.#started) this.#disabledEarly = disabled;\n    for (const run of this.#formDisabled) run(disabled);\n  }\n");
         }
     }
 
