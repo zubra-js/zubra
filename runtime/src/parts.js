@@ -1,17 +1,19 @@
 // Binders for the less common simple parts: a window or document listener, a computed class list,
 // a class toggle and a style property. Interface 5 output names them (`binder: $classes`), so a
 // component without one carries none of their code; legacy.js fills them in for older output.
-import { $r, $srcset, $url, listen } from './element.js';
+import { $r, $srcset, $url, listen, whileConnected } from './element.js';
 import { effect } from './effect.js';
 
-/** @internal `<zb-window>`/`<zb-document>`: listening while this part of the template is rendered. */
+/** @internal `<zb-window>`/`<zb-document>`: listening while this part is rendered and the element is connected. */
 export function $global(part) {
   const target = part.global === 'window' ? window : document;
-  effect(() => {
+  // whileConnected, not the effect's own cleanup: disconnect pauses effects and does not run
+  // cleanups, and a listener left on window would retain the detached element.
+  effect(() => whileConnected(() => {
     const listener = listen(part, target);
     target.addEventListener(part.on, listener);
     return () => target.removeEventListener(part.on, listener);
-  });
+  }));
 }
 
 /** @internal A computed class beside class: toggles: token by token, leaving the toggles' alone. */

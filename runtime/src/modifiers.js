@@ -2,7 +2,7 @@
 // `onkeydown.shift.enter`, `.self`, `.once` and the rest, on an element or on `<zb-window>` /
 // `<zb-document>`. A component whose listeners have none doesn't load this.
 import { effect } from './effect.js';
-import { $r, APPLE, formOf } from './element.js';
+import { $r, APPLE, formOf, whileConnected } from './element.js';
 
 /**
  * The listener and its options: the handler, read when the event fires, behind the modifiers'
@@ -38,11 +38,11 @@ function bindModified(part, node) {
   if (part.global) {
     // <zb-window>/<zb-document>: listening while this part of the template is rendered.
     const target = part.global === 'window' ? window : document;
-    effect(() => {
+    effect(() => whileConnected(() => {
       const [listener, options] = listen(part, target);
       target.addEventListener(part.on, listener, options);
       return () => target.removeEventListener(part.on, listener, options);
-    });
+    }));
   } else {
     const [listener, options] = listen(part, node);
     node.addEventListener(part.on, listener, options);

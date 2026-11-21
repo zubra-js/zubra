@@ -59,6 +59,21 @@ export function countLive() {
 export const effectOf = (sink) => (sink instanceof Effect ? sink : (watcher.owner(sink) ?? null));
 // @dev-end
 
+/** The effect or scope currently running, for binders that register work against its owner. */
+export const activeOwner = () => owner;
+
+/** True when `node` or an owner above it is paused or disposed. `parent` stays inside this file. */
+export function pausedOwner(node) {
+  for (let at = node; at; at = at.parent) if (at.paused || at.disposed) return true;
+  return false;
+}
+
+/** The value `map` holds for the running owner or one above it. */
+export function ownerData(map) {
+  for (let at = owner; at; at = at.parent) if (map.has(at)) return map.get(at);
+  return undefined;
+}
+
 const watcher = reactions(() => {
   scheduled ??= new Promise((resolve) => queueMicrotask(() => {
     try { flush(); } finally { scheduled = null; resolve(); }

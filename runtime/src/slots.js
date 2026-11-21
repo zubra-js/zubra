@@ -306,11 +306,14 @@ function routeChildren(host, context, slots, tag) {
       }
     }
   });
-  context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
-  for (const slot of context.slots.values()) {
-    context.observer.observe(slot.park, { childList: true });
-    slot.nodes.forEach(watch);
-  }
+  // Re-observe after a disconnect (element.js drops the observer so it can't retain the element).
+  context.observe = () => {
+    context.observer.disconnect();
+    context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
+    for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
+  };
+  if (host.isConnected) context.observe();
+  for (const slot of context.slots.values()) slot.nodes.forEach(watch);
 }
 
 // Form controls' live state: bound as properties, so `value={draft}` keeps up with typing and
