@@ -1,0 +1,8 @@
+<!-- A promise that may settle while the element is off the page: the result shows on return,
+     and nothing it mounts stays subscribed in between. -->
+<zb-pending-move label="a" value={null}>
+  <zb-await value={value}>
+    <p class="pending">{label}</p>
+    <zb-then as="data"><p class="done">{data}-{label}</p></zb-then>
+  </zb-await>
+</zb-pending-move>

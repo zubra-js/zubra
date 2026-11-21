@@ -1,0 +1,13 @@
+<!-- A window listener: it must go away when the element leaves the page, and when the branch
+     that owns it is hidden, and come back once for each return. -->
+<script>
+  function hit() {
+    window.hits = (window.hits ?? 0) + 1
+  }
+</script>
+<zb-window-count show={true}>
+  <zb-if test={show}>
+    <zb-window onclick={hit}></zb-window>
+    <i>on</i>
+  </zb-if>
+</zb-window-count>
