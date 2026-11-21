@@ -910,8 +910,10 @@ function defineElement(tag, definition) {
     // @hot (left out of the production build: scripts/build-production.js)
     // The same tag again: in development (with hot module replacement), a new version of the
     // component, swapped into the live elements; otherwise the first definition stands.
-    if (globalThis.__ZUBRA_HOT__ && existing[HOT]) {
-      existing.hotReloaded = existing[HOT](definition);
+    // Never call define() again: Firefox and WebKit throw NotSupportedError.
+    if (globalThis.__ZUBRA_HOT__) {
+      if (typeof existing[HOT] === 'function') existing.hotReloaded = existing[HOT](definition);
+      else existing.hotReloaded = false; // a build that can't swap: the plugin reloads the page
       return existing;
     }
     // @hot-end
