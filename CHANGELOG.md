@@ -4,6 +4,14 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Fixed
+
+- **A window listener, the light-DOM slot observer, and an in-flight fetch go when the element leaves the page.** They lived in effect cleanups, and disconnect only pauses the effect graph so a moved element can resume it. The listener stayed on `window` or `document`, the observer stayed on the host, and a `resource()` request kept running and could write into a detached element. Each is now tied to the element being connected: disconnect removes it, and connecting again starts it once. A `zb-await` whose promise settles while the element is detached still shows its result when the element comes back. Pause still does not run every effect cleanup, so a move re-runs only the effects whose inputs changed.
+- **`.self` is the click's original target.** A listener on a shadow host sees `event.target` retargeted to the host, so a click inside the shadow looked like a click on the host. `.self` now uses the first entry of `composedPath()`.
+- **`formDisabledCallback(false)` before connect is kept, and `setValidity` does not throw when its anchor is not focusable.** Safari and Firefox can call the callback before the element connects, including with `false`, and that `false` was dropped, so the control stayed disabled. The last value is replayed once the script has registered. Safari throws `NotFoundError` if the validity anchor is the host and the host is not a focusable descendant; the call is retried without an anchor.
+- **A hot update that cannot swap the element reloads the page.** Defining the same tag twice throws `NotSupportedError` in Firefox and WebKit. A build with no swap method now sets `hotReloaded` to false, which is what the plugin already reloads on, and the first class stays registered.
+- **`--emit element` drops a window listener when its `zb-if` or `zb-each` goes.** The listener was pushed onto the element for as long as the element lived, so hiding the branch left it on `window`. The branch or row removes it, and connecting again adds it once.
+
 ## 6.0.2 — 2026-11-21
 
 ### Fixed
