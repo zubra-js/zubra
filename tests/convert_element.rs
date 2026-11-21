@@ -184,6 +184,56 @@ customElements.define("like-button", LikeButton);
     );
 }
 
+/// A guard added to the listener `--emit element` writes is reported, not thrown away. The
+/// conversion used to exit clean and emit an unconditional `<zb-window>`.
+#[test]
+fn a_guard_in_a_branch_listener_is_reported() {
+    let dir = temp_dir("guard");
+    let path = dir.join("win-if.zb");
+    fs::write(
+        &path,
+        "<script>\n  function hit() {}\n</script>\n<zb-win-if show={true}>\n  <zb-if test={show}><zb-window onclick={hit}></zb-window></zb-if>\n</zb-win-if>\n",
+    )
+    .unwrap();
+    let js = zubra::compile_element_file(&path.to_string_lossy()).unwrap();
+    let guarded = js.replacen(
+        "const listener = hit;",
+        "if (!this.allowed) return; const listener = hit;",
+        1,
+    );
+    assert_ne!(
+        guarded, js,
+        "the listener arrow was not where this test edits it"
+    );
+    let conversion = zubra::convert_element(&guarded, "win-if.element.js").unwrap();
+    assert!(
+        !conversion.unsupported.is_empty(),
+        "a guard in the listener was dropped:\n{}",
+        conversion.output
+    );
+    assert!(
+        !conversion.output.contains("zb-window"),
+        "the listener was converted as if the guard was not there:\n{}",
+        conversion.output
+    );
+
+    let beside = js.replacen(
+        "const cleanup = listen();",
+        "if (!this.allowed) return; const cleanup = listen();",
+        1,
+    );
+    assert_ne!(
+        beside, js,
+        "the connect-time listen was not where this test edits it"
+    );
+    let conversion = zubra::convert_element(&beside, "win-if.element.js").unwrap();
+    assert!(
+        !conversion.unsupported.is_empty(),
+        "a guard beside the connect-time listen was dropped:\n{}",
+        conversion.output
+    );
+}
+
 /// What it can't place is reported at its line, not guessed.
 #[test]
 fn what_it_cant_place_is_reported() {

@@ -1,0 +1,9 @@
+<!-- Records the last onFormDisabled value, including an explicit false before connect. -->
+<script>
+  import { onFormDisabled } from '@zubra/runtime'
+  let state = "none"
+  onFormDisabled((disabled) => (state = disabled ? "disabled" : "enabled"))
+</script>
+<zb-disable-probe form-associated>
+  <output>{state}</output>
+</zb-disable-probe>

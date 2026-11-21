@@ -5,10 +5,10 @@ import { effect } from './effect.js';
 import { $r, hooks, see } from './element.js';
 import { untrack } from './signal.js';
 
-// Disabled (inside a disabled <fieldset>, say) before the element's setup registered its hooks.
-// Chromium always calls formDisabledCallback after connectedCallback, so there this is never
-// used (the browser tests confirm the behaviour without it); it guards engines that order the
-// callbacks the other way, which the test suite can't currently exercise.
+// The last formDisabledCallback before the element's setup registered its hooks.
+// Chromium always calls it after connectedCallback, so there this is never used (the browser
+// tests confirm the behaviour without it). Safari and Firefox can call it first, including
+// with `false`: the value itself is replayed once the hooks exist, not only `true`.
 const disabledEarly = new WeakMap();
 
 /** @internal What interface 4 output names as `forming` for a form-associated component. */
@@ -27,8 +27,13 @@ export const $form = {
       formStateRestoreCallback: { value(state, mode) { for (const fn of hooksOf(this)?.formRestore ?? []) fn(state, mode); } },
       formDisabledCallback: {
         value(disabled) {
-          disabledEarly.set(this, disabled);
-          for (const fn of hooksOf(this)?.formDisabled ?? []) fn(disabled);
+          const hooks = hooksOf(this);
+          if (!hooks) {
+            disabledEarly.set(this, disabled);
+            return;
+          }
+          disabledEarly.delete(this);
+          for (const fn of hooks.formDisabled) fn(disabled);
         },
       },
     };
@@ -72,7 +77,10 @@ export const $form = {
   },
   /** Once rendered: disabled before the hooks existed. */
   end(element, hooks) {
-    if (disabledEarly.get(element)) for (const fn of hooks.formDisabled) fn(true);
+    if (!disabledEarly.has(element)) return;
+    const disabled = disabledEarly.get(element);
+    disabledEarly.delete(element);
+    for (const fn of hooks.formDisabled) fn(disabled);
   },
 };
 
@@ -111,17 +119,26 @@ export function validity(check) {
   const component = formHooks('validity');
   const { internals, host } = component;
   // The browser shows the message at the anchor and focuses it when a form won't submit: the
-  // first focusable element the component rendered (the host itself isn't focusable).
+  // first focusable element the component rendered. The host itself is not a safe anchor —
+  // Safari throws NotFoundError from setValidity unless the anchor is a focusable
+  // shadow-including descendant — and the first run is before the template is inserted.
+  // No anchor lets the browser use the element.
   const anchor = () => {
     for (const node of (host.shadowRoot ?? host).querySelectorAll(FOCUSABLE)) {
       if (!node.closest('[data-zb-slotted]')) return node;
     }
-    return host;
+    return host.matches?.(FOCUSABLE) ? host : undefined;
   };
   let message = '';
   const apply = () => {
-    if (message) internals.setValidity({ customError: true }, message, anchor());
-    else internals.setValidity({});
+    const node = anchor();
+    try {
+      if (message) internals.setValidity({ customError: true }, message, node);
+      else internals.setValidity({});
+    } catch (error) {
+      if (!message) throw error;
+      internals.setValidity({ customError: true }, message);
+    }
   };
   effect(() => {
     message = String($r(check()) || '');

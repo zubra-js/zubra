@@ -10,7 +10,7 @@
 // text is reached through its element (an only child) or through an empty-comment anchor.
 import { State, Computed, untrack, isSignal } from './signal.js';
 import { wrap, raw } from './deep.js';
-import { effect, root as rootScope, tick } from './effect.js';
+import { activeOwner, effect, ownerData, root as rootScope, tick } from './effect.js';
 // @dev (left out of the production build: scripts/build-production.js)
 import { dev as devEffects } from './effect.js';
 import { register as devRegister, listened as devListened } from './devhook.js';
@@ -191,6 +191,46 @@ export function onMount(fn) {
 /** Run when the element is disconnected. */
 export function onUnmount(fn) {
   hooks('onUnmount').unmount.push(fn);
+}
+
+// Element scope → its hooks, so a binder can register connection-scoped work after setup
+// (when `current` is no longer set) and from a branch that renders later.
+const scopeHooks = new WeakMap();
+
+/**
+ * Run `start` while the component is connected. The cleanup `start` returns runs on
+ * disconnect, and `start` runs again if the element comes back — a window listener or any
+ * other external subscription, which pause() alone would leave in place (pause keeps the
+ * effect and skips its cleanup, so a move doesn't rebuild the DOM). Dispose the returned
+ * function when the part leaves the template (a branch switching away).
+ * @internal
+ */
+export function whileConnected(start) {
+  const component = ownerData(scopeHooks);
+  if (!component) throw new Error(`zubra: whileConnected() must run inside a component${see('script-state-and-hooks')}`);
+  const host = component.host;
+  let remove = null;
+  let on = false;
+  const up = () => {
+    if (on || !host.isConnected) return;
+    on = true;
+    const cleanup = start();
+    remove = typeof cleanup === 'function' ? cleanup : null;
+  };
+  const down = () => {
+    if (!on) return;
+    on = false;
+    remove?.();
+    remove = null;
+  };
+  const entry = { up, down };
+  component.links.push(entry);
+  up();
+  return () => {
+    down();
+    const at = component.links.indexOf(entry);
+    if (at >= 0) component.links.splice(at, 1);
+  };
 }
 
 /**
@@ -676,7 +716,8 @@ function bindAttribute(part, node, hydrating = false) {
         // until the option exists the value doesn't take, so set it again once they're there.
         if (node.options && node.value !== text) {
           queueMicrotask(() => {
-            if (written === text && node.value !== text) node.value = text;
+            // The element may have been removed before the options rendered.
+            if (written === text && node.isConnected && node.value !== text) node.value = text;
           });
         }
       }
@@ -869,8 +910,10 @@ function defineElement(tag, definition) {
     // @hot (left out of the production build: scripts/build-production.js)
     // The same tag again: in development (with hot module replacement), a new version of the
     // component, swapped into the live elements; otherwise the first definition stands.
-    if (globalThis.__ZUBRA_HOT__ && existing[HOT]) {
-      existing.hotReloaded = existing[HOT](definition);
+    // Never call define() again: Firefox and WebKit throw NotSupportedError.
+    if (globalThis.__ZUBRA_HOT__) {
+      if (typeof existing[HOT] === 'function') existing.hotReloaded = existing[HOT](definition);
+      else existing.hotReloaded = false; // a build that can't swap: the plugin reloads the page
       return existing;
     }
     // @hot-end
@@ -1012,8 +1055,12 @@ function defineElement(tag, definition) {
         if (root.adoptedStyleSheets && !(inPage && root === document && pageHasStyles())) adopt(root, ownSheets());
       }
       let waits;
-      if (this.#scope) this.#scope.resume();
-      else if ((waits = hydrating?.waits(shadow ? this.shadowRoot : this, componentTemplate.content, roots, claimed(this)))) {
+      if (this.#scope) {
+        this.#scope.resume();
+        // Slot observation and external listeners (window, document) were dropped on disconnect.
+        this.#context?.observe?.();
+        for (const link of this.#hooks.links) link.up();
+      } else if ((waits = hydrating?.waits(shadow ? this.shadowRoot : this, componentTemplate.content, roots, claimed(this)))) {
         // Server markup without its comments: start once the code that puts them back is here.
         this.#starting ??= waits.then(() => {
           this.#starting = null;
@@ -1040,6 +1087,11 @@ function defineElement(tag, definition) {
       if (!this.#scope) return; // (not started: waiting for remark.js)
       for (const cleanup of this.#cleanups.splice(0)) cleanup();
       for (const fn of this.#hooks.unmount) fn();
+      // Drop external observers and listeners before pausing. Pause keeps effects (a move
+      // re-runs only what changed) and does not run their cleanups, so a window listener or a
+      // MutationObserver would otherwise retain the element for as long as it stayed detached.
+      this.#context?.observer?.disconnect();
+      for (const link of this.#hooks.links) link.down();
       // Paused, not disposed: long-lived signals stop holding this element, and if it comes
       // back only the parts whose inputs changed meanwhile are re-run.
       this.#scope.pause();
@@ -1119,7 +1171,7 @@ function defineElement(tag, definition) {
         });
       }
       this.#hooks = {
-        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(), states: [], kept, hydrated: new State(false),
+        mount: [], unmount: [], links: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(), states: [], kept, hydrated: new State(false),
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
       // @dev
@@ -1128,6 +1180,7 @@ function defineElement(tag, definition) {
       // The element's own root: an effect that inserted it (a list row) doesn't own it, so
       // re-running that effect can't dispose the element's effects.
       this.#scope = rootScope(() => {
+        scopeHooks.set(activeOwner(), this.#hooks);
         const previous = current;
         current = this.#hooks;
         let parts;

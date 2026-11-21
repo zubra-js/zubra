@@ -293,7 +293,7 @@ fn a_form_control_gets_the_form_callbacks_its_script_asks_for() {
         // The script's reset is the reset; the two-way prop's default one is what's left without it.
         "formResetCallback() {\n    if (this.#formReset.length) {",
         // Disabled before the script ran.
-        "if (this.#disabledEarly) for (const run of this.#formDisabled) run(true);",
+        "if (this.#disabledEarly !== null) for (const run of this.#formDisabled) run(this.#disabledEarly);",
     ] {
         assert!(module.contains(expected), "{expected}: {module}");
     }

@@ -144,6 +144,46 @@ for (const framework of ['React', 'Vue']) {
   });
 }
 
+test('heap and live instances stay flat after 500 components update 1,000 times and unmount', { skip }, async () => {
+  const { page, messages } = await open('<div id="box"></div>', { modules: ['shared', 'card'] });
+  const heap = async () => {
+    const client = await page.context().newCDPSession(page);
+    for (let round = 0; round < 3; round++) await client.send('HeapProfiler.collectGarbage');
+    const { usedSize } = await client.send('Runtime.getHeapUsage');
+    await client.detach();
+    return usedSize;
+  };
+  const cycle = () => page.evaluate(async () => {
+    const box = document.getElementById('box');
+    const made = [];
+    for (let i = 0; i < 500; i++) {
+      const card = document.createElement('zb-card');
+      card.setAttribute('heading', `h${i}`);
+      const shared = document.createElement('zb-shared');
+      box.append(card, shared);
+      made.push(card, shared);
+    }
+    await Promise.all(made.map((el) => el.updateComplete));
+    for (let i = 0; i < 1000; i++) {
+      window.shared.set(i);
+      await Promise.resolve();
+    }
+    await Promise.all(made.map((el) => el.updateComplete));
+    box.replaceChildren();
+  });
+  await cycle();
+  await settle(page);
+  const baseline = await heap();
+  await cycle();
+  await settle(page);
+  assert.deepEqual(await collected(page, ['zb-shared', 'zb-card']), { 'zb-shared': 0, 'zb-card': 0 });
+  const after = await heap();
+  // A retained component graph shows up as megabytes, not allocator noise.
+  assert.ok(after < baseline + 8 * 1024 * 1024, `heap grew from ${baseline} to ${after}`);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test("shadow components made and removed don't leave a reference each behind", { skip }, async () => {
   const { page } = await open('<p>shadow</p>', { modules: ['slot-card-shadow'] });
   const count = async () => {

@@ -1371,6 +1371,8 @@ impl Converter<'_> {
             reactive: context.reactive.clone(),
             uses_host: false,
         };
+        // Names of listeners registered with `this.#mounted.push(name)` rather than an inline arrow.
+        let mut branch_listeners = Vec::new();
         for statement in statements {
             match statement {
                 Statement::VariableDeclaration(declaration)
@@ -1393,12 +1395,32 @@ impl Converter<'_> {
                                 self.update(tree, expression, &nodes, &texts, &mut context)?;
                             }
                         }
+                    } else if self.listener_bookkeeping(&name, &text, statements) {
+                        // `const host = this` and `let off = null`, and only those: the bookkeeping
+                        // around a listener that lives while its branch or row is showing.
+                    } else if self.global_listener(tree, &text, &mut context) {
+                        branch_listeners.push(name);
                     } else {
                         self.unsupported(statement.span(), "a statement in the template's setup");
                     }
                 }
                 Statement::ExpressionStatement(expression) => {
                     let expression = expression.expression.without_parentheses();
+                    // `this.#mounted.push(listen)` after `const listen = () => { addEventListener … }`.
+                    if let Expression::CallExpression(call) = expression {
+                        if self.text(call.callee.span()) == "this.#mounted.push" {
+                            if let Some(Expression::Identifier(identifier)) =
+                                call.arguments.first().and_then(Argument::as_expression)
+                            {
+                                if branch_listeners
+                                    .iter()
+                                    .any(|name| name == identifier.name.as_str())
+                                {
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                     match expression {
                         Expression::CallExpression(call) => {
                             self.call(tree, call, &nodes, &mut texts, &mut context)
@@ -1445,6 +1467,9 @@ impl Converter<'_> {
                     }
                 }
                 Statement::ReturnStatement(_) => {}
+                // The listener runs at once when the branch returns on an element already connected.
+                // Only that exact body: a guard written beside it is a statement to finish by hand.
+                Statement::IfStatement(statement) if self.known_mount_if(statement) => {}
                 other => self.unsupported(other.span(), "a statement in the template's setup"),
             }
         }
@@ -1494,27 +1519,8 @@ impl Converter<'_> {
             let body = argument(0)
                 .map(|expression| self.text(expression.span()).to_owned())
                 .unwrap_or_default();
-            for target in ["window", "document"] {
-                let marker = format!("{target}.addEventListener(");
-                if let Some(at) = body.find(&marker) {
-                    let event = body[at + marker.len()..]
-                        .split(',')
-                        .next()
-                        .and_then(|event| serde_json::from_str::<String>(event.trim()).ok());
-                    let options = body[at + marker.len()..]
-                        .split_once(", listener")
-                        .and_then(|(_, rest)| rest.split(')').next())
-                        .map(|rest| rest.trim_start_matches(',').trim().to_owned())
-                        .unwrap_or_default();
-                    if let (Some(event), Some(listener)) = (event, listener_source(&body)) {
-                        let (modifiers, handler) =
-                            self.listener_text(&listener, &options, target, context);
-                        tree.globals.push(format!(
-                            "<zb-{target} on{event}{modifiers}={{{handler}}}></zb-{target}>"
-                        ));
-                        return;
-                    }
-                }
+            if self.global_listener(tree, &body, context) {
+                return;
             }
         }
         // `(ref)(node)`
@@ -1530,6 +1536,96 @@ impl Converter<'_> {
             }
         }
         self.unsupported(call.span, "a call in the template's setup");
+    }
+
+    /// `const host = this` or `let off = null` from a branch listener, and not any other binding.
+    fn listener_bookkeeping(&self, name: &str, text: &str, statements: &[Statement<'_>]) -> bool {
+        let later = |needle: &str| {
+            statements
+                .iter()
+                .any(|statement| self.text(statement.span()).contains(needle))
+        };
+        if text == "this" && name == "host" {
+            return later("host.#mounted");
+        }
+        text == "null" && later(&format!("if ({name}) return {name}"))
+    }
+
+    /// The connect-time `if` the emitter writes, and nothing else in its body.
+    fn known_mount_if(&self, statement: &oxc_ast::ast::IfStatement<'_>) -> bool {
+        if statement.alternate.is_some()
+            || self.text(statement.test.span()) != "this.#started && this.isConnected"
+        {
+            return false;
+        }
+        let oxc_ast::ast::Statement::BlockStatement(body) = &statement.consequent else {
+            return false;
+        };
+        if body.body.len() != 2 {
+            return false;
+        }
+        let oxc_ast::ast::Statement::VariableDeclaration(declaration) = &body.body[0] else {
+            return false;
+        };
+        if declaration.declarations.len() != 1
+            || binding_name(&declaration.declarations[0].id) != Some("cleanup")
+        {
+            return false;
+        }
+        let Some(oxc_ast::ast::Expression::CallExpression(call)) = declaration.declarations[0]
+            .init
+            .as_ref()
+            .map(Expression::without_parentheses)
+        else {
+            return false;
+        };
+        if !call.arguments.is_empty() || !matches!(call.callee, Expression::Identifier(_)) {
+            return false;
+        }
+        let oxc_ast::ast::Statement::IfStatement(check) = &body.body[1] else {
+            return false;
+        };
+        if check.alternate.is_some()
+            || self.text(check.test.span()) != "typeof cleanup === \"function\""
+        {
+            return false;
+        }
+        let oxc_ast::ast::Statement::ExpressionStatement(call) = &check.consequent else {
+            return false;
+        };
+        compact(self.text(call.span())).trim_end_matches(';') == "this.#cleanups.push(cleanup)"
+    }
+
+    /// A `window` or `document` listener, from the arrow passed to `#mounted.push` or bound with
+    /// `const listen = () => { … addEventListener … }`. Puts `<zb-window>` / `<zb-document>` back.
+    /// Any other statement in that arrow is not a listener the emitter wrote, so it is not converted.
+    fn global_listener(&mut self, tree: &mut Tree, body: &str, context: &mut Unlower) -> bool {
+        if !emitted_listener(body) {
+            return false;
+        }
+        for target in ["window", "document"] {
+            let marker = format!("{target}.addEventListener(");
+            let Some(at) = body.find(&marker) else {
+                continue;
+            };
+            let event = body[at + marker.len()..]
+                .split(',')
+                .next()
+                .and_then(|event| serde_json::from_str::<String>(event.trim()).ok());
+            let options = body[at + marker.len()..]
+                .split_once(", listener")
+                .and_then(|(_, rest)| rest.split(')').next())
+                .map(|rest| rest.trim_start_matches(',').trim().to_owned())
+                .unwrap_or_default();
+            if let (Some(event), Some(listener)) = (event, listener_source(body)) {
+                let (modifiers, handler) = self.listener_text(&listener, &options, target, context);
+                tree.globals.push(format!(
+                    "<zb-{target} on{event}{modifiers}={{{handler}}}></zb-{target}>"
+                ));
+                return true;
+            }
+        }
+        false
     }
 
     /// A listener: (its modifiers, its handler), from the emitter's wrapper when it's one.
@@ -2087,6 +2183,149 @@ fn rename(text: &str, from: &str, to: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+fn compact(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// The listener arrow `--emit element` writes, and not one with a guard added to it.
+/// A branch listener is five statements; one registered on the element itself is three.
+fn emitted_listener(body: &str) -> bool {
+    let allocator = Allocator::default();
+    let Ok(parsed) = Parser::new(&allocator, body, SourceType::mjs()).parse_expression() else {
+        return false;
+    };
+    let Expression::ArrowFunctionExpression(arrow) = parsed.without_parentheses() else {
+        return false;
+    };
+    let statements = arrow_statements(arrow);
+    let slice = |span: OxcSpan| {
+        body.get(span.start as usize..span.end as usize)
+            .unwrap_or("")
+    };
+    let listener_binding = |statement: &Statement| {
+        let Statement::VariableDeclaration(declaration) = statement else {
+            return false;
+        };
+        declaration.declarations.len() == 1
+            && binding_name(&declaration.declarations[0].id) == Some("listener")
+    };
+    let add_call = |statement: &Statement| -> Option<&str> {
+        let Statement::ExpressionStatement(expression) = statement else {
+            return None;
+        };
+        let Expression::CallExpression(call) = expression.expression.without_parentheses() else {
+            return None;
+        };
+        let callee = slice(call.callee.span());
+        callee
+            .strip_suffix(".addEventListener")
+            .filter(|target| *target == "window" || *target == "document")
+    };
+    match statements {
+        [guard, binding, add, assign, done] => {
+            let Statement::IfStatement(guard) = guard else {
+                return false;
+            };
+            if guard.alternate.is_some() {
+                return false;
+            }
+            let off = slice(guard.test.span()).trim();
+            let Statement::ReturnStatement(early) = &guard.consequent else {
+                return false;
+            };
+            let Some(early) = &early.argument else {
+                return false;
+            };
+            if slice(early.span()).trim() != off || !listener_binding(binding) {
+                return false;
+            }
+            let Some(target) = add_call(add) else {
+                return false;
+            };
+            let Statement::ExpressionStatement(expression) = assign else {
+                return false;
+            };
+            let Expression::AssignmentExpression(assignment) =
+                expression.expression.without_parentheses()
+            else {
+                return false;
+            };
+            if slice(assignment.left.span()).trim() != off {
+                return false;
+            }
+            let Expression::ArrowFunctionExpression(remover) =
+                assignment.right.without_parentheses()
+            else {
+                return false;
+            };
+            let remove = arrow_statements(remover);
+            if remove.len() != 2 {
+                return false;
+            }
+            let Statement::ExpressionStatement(call) = &remove[0] else {
+                return false;
+            };
+            let Expression::CallExpression(call) = call.expression.without_parentheses() else {
+                return false;
+            };
+            if slice(call.callee.span()) != format!("{target}.removeEventListener") {
+                return false;
+            }
+            let Statement::ExpressionStatement(clear) = &remove[1] else {
+                return false;
+            };
+            let Expression::AssignmentExpression(clear) = clear.expression.without_parentheses()
+            else {
+                return false;
+            };
+            slice(clear.left.span()).trim() == off
+                && slice(clear.right.span()).trim() == "null"
+                && returns_name(done, body, off)
+        }
+        [binding, add, done] => {
+            let Some(target) = add_call(add) else {
+                return false;
+            };
+            listener_binding(binding) && returns_remove(done, body, target)
+        }
+        _ => false,
+    }
+}
+
+fn returns_name(statement: &Statement, body: &str, name: &str) -> bool {
+    let Statement::ReturnStatement(returned) = statement else {
+        return false;
+    };
+    returned.argument.as_ref().is_some_and(|argument| {
+        body.get(argument.span().start as usize..argument.span().end as usize)
+            .unwrap_or("")
+            .trim()
+            == name
+    })
+}
+
+fn returns_remove(statement: &Statement, body: &str, target: &str) -> bool {
+    let Statement::ReturnStatement(returned) = statement else {
+        return false;
+    };
+    let Some(Expression::ArrowFunctionExpression(arrow)) = returned
+        .argument
+        .as_ref()
+        .map(Expression::without_parentheses)
+    else {
+        return false;
+    };
+    let Some(expression) = arrow_expression(arrow) else {
+        return false;
+    };
+    let Expression::CallExpression(call) = expression.without_parentheses() else {
+        return false;
+    };
+    let start = call.callee.span().start as usize;
+    let end = call.callee.span().end as usize;
+    body.get(start..end).unwrap_or("") == format!("{target}.removeEventListener")
 }
 
 /// `const listener = …;` in a global listener's setup (`body` is the whole arrow function).

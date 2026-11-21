@@ -77,12 +77,19 @@ export class ZubraContextElement extends Base {
         if (first) first = false;
         else untrack(() => this.#notify(value));
       }));
+      // A signal value would otherwise keep this element after it leaves the document.
+      if (!this.isConnected) this.#watching.pause();
     }
     this.#notify(untrack(() => unwrap(next)));
   }
 
   connectedCallback() {
     if (!this.style.display) this.style.display = 'contents';
+    this.#watching?.resume();
+  }
+
+  disconnectedCallback() {
+    this.#watching?.pause();
   }
 
   #notify(value) {

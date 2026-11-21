@@ -161,12 +161,17 @@ for (const name of Object.keys(APPS)) {
     assert.equal(await text(page, 'touched'), '', 'not touched while focus is inside');
 
     await page.click('#seats .up');
+    // Playwright's WebKit does not focus a button when it clicks it (Chromium and Firefox do,
+    // and a real Safari click does). Focus the button, then move focus out, so this asserts
+    // the focusout path the libraries listen on.
+    await page.focus('#seats .up');
     await page.focus('#submit');
     await settle(page);
     assert.match(await text(page, 'touched'), /seats/, 'focus leaving the control is a blur');
     assert.equal(await text(page, 'error'), 'too many', 'the library validated the value');
 
     await page.click('#seats .down');
+    await page.focus('#seats .down');
     await page.focus('#submit');
     await settle(page);
     assert.equal(await text(page, 'error'), '');

@@ -1,0 +1,8 @@
+<!-- An in-flight resource is aborted when the element leaves, and started again when it returns. -->
+<script>
+  import { resource } from '@zubra/runtime'
+  const user = resource(({ signal }) => window.loadUser(signal))
+</script>
+<zb-fetch-user>
+  <p class="status">{user.status}</p>
+</zb-fetch-user>

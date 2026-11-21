@@ -1,7 +1,7 @@
 // zb-await: a part with `binder: $await` (interface 4).
 
 import { clearBetween, hydratable, mountBlock } from './blocks.js';
-import { effect, scope } from './effect.js';
+import { effect, pausedOwner, scope } from './effect.js';
 import { $r, matchingClose } from './element.js';
 import { RESOURCE } from './resource.js';
 import { State, Computed, untrack } from './signal.js';
@@ -37,6 +37,11 @@ export function bindAwait(part, open, hydrating, context) {
   let latest = null;
   let settled = false; // a zb-then or zb-catch block is showing
   const attempt = new State(0);
+  // Bumped when a promise settles while the element is paused, so resume re-runs this effect
+  // and shows the outcome. Pause does not run the effect's cleanup, and the promise is not one
+  // of its dependencies, so without this the result would mount into a detached tree — and the
+  // effects that mount creates would stay subscribed, retaining the element.
+  const wake = new State(0);
   // The value, evaluated again only when what it reads changes or retry() asks: a resource
   // settling re-runs the effect below, and mustn't call `load()` again.
   const current = new Computed(() => (attempt.get(), $r(part.await())));
@@ -45,6 +50,7 @@ export function bindAwait(part, open, hydrating, context) {
     attempt.set(untrack(() => attempt.get()) + 1);
   };
   effect(() => {
+    wake.get();
     const value = current.get();
     const many = Array.isArray(value);
     const token = (latest = {});
@@ -52,17 +58,23 @@ export function bindAwait(part, open, hydrating, context) {
     const owner = scope();
     let timer;
     let loading = 0;
-    const show = (index, payload) => untrack(() => owner.run(() => {
-      clearTimeout(timer);
-      const block = part.blocks[index];
-      const hydrate = first; // the server rendered this branch, unless it left the region to us
-      first = false;
-      settled = index > 0;
-      if (block) mountBlock(block, index ? [new State(payload), new State(retry)] : [], open, close, hydrate, context);
-      else clearBetween(open, close);
-    }));
+    const defer = () => wake.set(untrack(() => wake.get()) + 1);
+    const show = (index, payload) => {
+      if (latest !== token || owner.disposed) return;
+      if (pausedOwner(owner)) return defer();
+      untrack(() => owner.run(() => {
+        clearTimeout(timer);
+        const block = part.blocks[index];
+        const hydrate = first; // the server rendered this branch, unless it left the region to us
+        first = false;
+        settled = index > 0;
+        if (block) mountBlock(block, index ? [new State(payload), new State(retry)] : [], open, close, hydrate, context);
+        else clearBetween(open, close);
+      }));
+    };
     const done = (index, payload) => {
       if (latest !== token || owner.disposed) return;
+      if (pausedOwner(owner)) return defer();
       if (loading) markLoading(context?.states, (loading = 0) - 1);
       show(index, payload);
     };
@@ -87,7 +99,7 @@ export function bindAwait(part, open, hydrating, context) {
     else if (pending) {
       const delay = part.delay ? Number(untrack(part.delay)) : 0;
       if (part.keep && settled) markLoading(context?.states, (loading = 1));
-      else if (delay > 0 && !first) timer = setTimeout(() => latest === token && !owner.disposed && show(0), delay);
+      else if (delay > 0 && !first) timer = setTimeout(() => show(0), delay);
       else show(0);
       // A pending resource re-runs this effect when it settles; promises are waited for here.
       if (!(many ? value : [value]).some((item) => $r(item)?.[RESOURCE] && $r(item).status === 'pending')) {

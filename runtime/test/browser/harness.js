@@ -118,8 +118,11 @@ export async function open(body, { modules = [], beforeModules = '' } = {}) {
   const page = await browser.newPage();
   const messages = [];
   // React's development build marks its performance tracks with console.timeStamp(), which
-  // Firefox reports as console messages.
-  page.on('console', (message) => message.type() !== 'timeStamp' && messages.push(`${message.type()}: ${message.text()}`));
+  // Firefox reports as console messages. Firefox also classifies the test origin (127.0.0.1)
+  // as a bounce tracker and logs that; it is the browser, not the page.
+  const noise = (message) => message.type() === 'timeStamp'
+    || (message.type() === 'warning' && message.text().includes('bounce tracker'));
+  page.on('console', (message) => { if (!noise(message)) messages.push(`${message.type()}: ${message.text()}`); });
   page.on('pageerror', (error) => messages.push(`pageerror: ${error.message}`));
   await page.goto(origin + path);
   try {

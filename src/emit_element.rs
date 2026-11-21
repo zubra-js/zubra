@@ -615,7 +615,7 @@ pub fn emit(
         out.push_str("  #formRestore = [];\n");
     }
     if members.contains("formDisabled") {
-        out.push_str("  #formDisabled = [];\n  #disabledEarly = false; // disabled before the script ran (see #start)\n");
+        out.push_str("  #formDisabled = [];\n  #disabledEarly = null; // last formDisabledCallback before the script ran, or null (see #start)\n");
     }
 
     // Constructor.
@@ -780,7 +780,7 @@ pub fn emit(
         ));
     }
     if members.contains("formDisabled") {
-        out.push_str("    // Disabled (by a disabled <fieldset>, say) before the script had registered onFormDisabled().\n    if (this.#disabledEarly) for (const run of this.#formDisabled) run(true);\n");
+        out.push_str("    // Disabled (by a disabled <fieldset>, say) before the script had registered onFormDisabled().\n    // The last value is replayed, including false: some engines call the callback before connect.\n    if (this.#disabledEarly !== null) for (const run of this.#formDisabled) run(this.#disabledEarly);\n");
     }
     out.push_str("  }\n");
 
@@ -859,7 +859,7 @@ pub fn emit(
         }
     }
     if members.contains("validity") {
-        out.push_str("    if (this.#validity) {\n      const message = String(this.#validity() || \"\");\n      // The browser shows the message at, and focuses, the first focusable thing the element rendered.\n      const anchor = [...this.querySelectorAll('input:not([type=hidden]), select, textarea, button, [tabindex]:not([tabindex=\"-1\"]), [contenteditable]')].find((node) => !node.closest(\"[data-zb-slotted]\")) ?? this;\n      if (message) this.#internals.setValidity({ customError: true }, message, anchor);\n      else this.#internals.setValidity({});\n    }\n");
+        out.push_str("    if (this.#validity) {\n      const message = String(this.#validity() || \"\");\n      // The browser shows the message at, and focuses, the first focusable thing the element rendered.\n      // Not the host: Safari throws from setValidity unless the anchor is a focusable descendant.\n      const anchor = [...this.querySelectorAll('input:not([type=hidden]), select, textarea, button, [tabindex]:not([tabindex=\"-1\"]), [contenteditable]')].find((node) => !node.closest(\"[data-zb-slotted]\"));\n      try {\n        if (message) this.#internals.setValidity({ customError: true }, message, anchor);\n        else this.#internals.setValidity({});\n      } catch (error) {\n        if (!message) throw error;\n        this.#internals.setValidity({ customError: true }, message);\n      }\n    }\n");
     }
     if members.contains("effects") {
         out.push_str("    this.#runEffects();\n");
@@ -896,7 +896,7 @@ pub fn emit(
             out.push_str("  /** The browser restored a value (back and forward, autofill): what the script gave onFormRestore() runs. */\n  formStateRestoreCallback(state, mode) {\n    for (const run of this.#formRestore) run(state, mode);\n  }\n");
         }
         if members.contains("formDisabled") {
-            out.push_str("  /** Disabled or enabled, by its own attribute or a disabled <fieldset>: what the script gave onFormDisabled() runs. */\n  formDisabledCallback(disabled) {\n    this.#disabledEarly = disabled && !this.#started;\n    for (const run of this.#formDisabled) run(disabled);\n  }\n");
+            out.push_str("  /** Disabled or enabled, by its own attribute or a disabled <fieldset>: what the script gave onFormDisabled() runs. */\n  formDisabledCallback(disabled) {\n    if (!this.#started) this.#disabledEarly = disabled;\n    for (const run of this.#formDisabled) run(disabled);\n  }\n");
         }
     }
 
@@ -1256,6 +1256,10 @@ struct Block {
     lines: Vec<String>,
     /// Expressions, each an update function.
     updates: Vec<String>,
+    /// A branch or a row: its window listeners go when it does, not only when the element disconnects.
+    ephemeral: bool,
+    /// Run when this branch or row is replaced.
+    destroys: Vec<String>,
     /// Names in scope (a row's item and index, `let:` names), with the JavaScript that reads them.
     scopes: Vec<(String, String)>,
     frames: Vec<Frame>,
@@ -1284,6 +1288,8 @@ impl Block {
             svg,
             lines: Vec::new(),
             updates: Vec::new(),
+            ephemeral: false,
+            destroys: Vec::new(),
             scopes,
             frames: vec![Frame {
                 var: Some(root.to_owned()),
@@ -1566,11 +1572,30 @@ impl Emitter<'_, '_> {
                                 self.listener(block, &lower, expression, &target, 1)?;
                             let options =
                                 options.map_or_else(String::new, |options| format!(", {options}"));
-                            let pad = &block.indent;
-                            block.line(format!(
-                                "// <zb-{target}>: listening while the element is on the page.\n{pad}this.#mounted.push(() => {{\n{pad}  const listener = {listener};\n{pad}  {target}.addEventListener({event}{options});\n{pad}  return () => {target}.removeEventListener({event}{options});\n{pad}}});",
-                                event = format!("{}, listener", json(&event)),
-                            ));
+                            let pad = block.indent.clone();
+                            let event = format!("{}, listener", json(&event));
+                            if block.ephemeral {
+                                // The branch renders after the element is already connected, and
+                                // again each time it returns: register the listener now, and drop
+                                // it when the branch is replaced (destroy) or the element leaves.
+                                let listen = self.names.local("listen");
+                                let off = self.names.local("off");
+                                // `destroy()` is a method of the branch record, so it cannot use
+                                // `this.#mounted`: `host` is the element, closed over from here.
+                                if block.destroys.is_empty() {
+                                    block.line(format!("{pad}const host = this;"));
+                                }
+                                block.line(format!(
+                                    "// <zb-{target}>: listening while this branch is showing and the element is on the page.\n{pad}let {off} = null;\n{pad}const {listen} = () => {{\n{pad}  if ({off}) return {off};\n{pad}  const listener = {listener};\n{pad}  {target}.addEventListener({event}{options});\n{pad}  {off} = () => {{ {target}.removeEventListener({event}{options}); {off} = null; }};\n{pad}  return {off};\n{pad}}};\n{pad}this.#mounted.push({listen});\n{pad}if (this.#started && this.isConnected) {{\n{pad}  const cleanup = {listen}();\n{pad}  if (typeof cleanup === \"function\") this.#cleanups.push(cleanup);\n{pad}}}"
+                                ));
+                                block.destroys.push(format!(
+                                    "{off}?.(); const at = host.#mounted.indexOf({listen}); if (at >= 0) host.#mounted.splice(at, 1);"
+                                ));
+                            } else {
+                                block.line(format!(
+                                    "// <zb-{target}>: listening while the element is on the page.\n{pad}this.#mounted.push(() => {{\n{pad}  const listener = {listener};\n{pad}  {target}.addEventListener({event}{options});\n{pad}  return () => {target}.removeEventListener({event}{options});\n{pad}}});"
+                                ));
+                            }
                         }
                     }
                 }
@@ -1731,6 +1756,7 @@ impl Emitter<'_, '_> {
             parent.svg,
             parent.scopes.clone(),
         );
+        block.ephemeral = true;
         self.nodes(&mut block, nodes, true)?;
         Ok(self.factory(&block, "", "", "", "", parent))
     }
@@ -1786,6 +1812,7 @@ impl Emitter<'_, '_> {
         let root = self.names.local("row");
         let scopes = parent.scopes.iter().cloned().chain(scope).collect();
         let mut block = Block::new(&root, &format!("{}    ", parent.indent), parent.svg, scopes);
+        block.ephemeral = true;
         self.nodes(&mut block, children, true)?;
         let next = self.names.local("next");
         let at = self.names.local("at");
@@ -1833,6 +1860,7 @@ impl Emitter<'_, '_> {
             out.push_str(line);
             out.push('\n');
         }
+        let mut cascade = String::new();
         let run = if block.updates.is_empty() {
             String::new()
         } else {
@@ -1842,6 +1870,9 @@ impl Emitter<'_, '_> {
                 out.push_str(&format!("{inner}  {update},\n"));
             }
             out.push_str(&format!("{inner}];\n"));
+            // A nested condition or list registers its own listener. Destroying this branch or
+            // row has to destroy that too, or the listener stays on window and #mounted.
+            cascade = format!("for (const update of {updates}) update.destroy?.(); ");
             format!(" for (const update of {updates}) update();")
         };
         let assign = if assign.is_empty() {
@@ -1849,8 +1880,14 @@ impl Emitter<'_, '_> {
         } else {
             format!(" {assign}")
         };
+        let own = block.destroys.join(" ");
+        let destroy = if cascade.is_empty() && own.is_empty() {
+            String::new()
+        } else {
+            format!(", destroy() {{ {cascade}{own} }}")
+        };
         out.push_str(&format!(
-            "{inner}return {{ nodes: {}, update({update_params}) {{{assign}{run} }} }};\n{close}}}",
+            "{inner}return {{ nodes: {}, update({update_params}) {{{assign}{run} }}{destroy} }};\n{close}}}",
             block.root
         ));
         out

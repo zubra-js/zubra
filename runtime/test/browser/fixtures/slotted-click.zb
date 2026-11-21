@@ -1,0 +1,23 @@
+<!-- Click, focus and input from inside a light-DOM component, including one slotted into
+     someone else's shadow root. -->
+<script>
+  function hit(event) {
+    const path = event.composedPath()
+    window.clicks = window.clicks ?? []
+    window.clicks.push([event.target.localName, path[0].localName, event.currentTarget.localName])
+  }
+  function note(name) {
+    window.order = window.order ?? []
+    window.order.push(name)
+  }
+</script>
+<zb-slotted-click>
+  <button type="button" class="inner" onclick={hit}>go</button>
+  <input
+    class="field"
+    onbeforeinput={() => note("beforeinput")}
+    oninput={() => note("input")}
+    onfocusin={() => note("focusin")}
+    onfocusout={() => note("focusout")}
+  >
+</zb-slotted-click>

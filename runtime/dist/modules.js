@@ -112,7 +112,8 @@ export default {
   "remark.js": [],
   "resource.js": [
     "signal.js",
-    "effect.js"
+    "effect.js",
+    "element.js"
   ],
   "server.js": [],
   "shadow.js": [

@@ -5,7 +5,14 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { useBrowser, open, here, compiler, engine, emitElement, elementRefused } from './harness.js';
 
-useBrowser({ stepper: join(here, 'fixtures/stepper.zb'), choose: join(here, 'fixtures/select-value.zb'), amount: join(here, 'fixtures/amount-field.zb'), toggle: join(here, 'fixtures/toggle-field.zb') });
+useBrowser({
+  stepper: join(here, 'fixtures/stepper.zb'),
+  choose: join(here, 'fixtures/select-value.zb'),
+  amount: join(here, 'fixtures/amount-field.zb'),
+  toggle: join(here, 'fixtures/toggle-field.zb'),
+  probe: join(here, 'fixtures/disable-probe.zb'),
+  note: join(here, 'fixtures/note-field.zb'),
+});
 
 const FORM = `<form id="order"><fieldset id="set"><label id="lbl">Qty <zb-stepper name="qty"></zb-stepper></label></fieldset>
   <input name="note" value="x"><button type="reset">Reset</button></form>`;
@@ -263,6 +270,34 @@ test('onFormRestore gets the state and the mode', async () => {
     return [restored, el.on];
   });
   assert.deepEqual(result, [true, false]);
+  await page.close();
+});
+
+test('formDisabledCallback(false) before connect is replayed, not dropped', async () => {
+  const { page, messages } = await open('<form id="f"></form>', { modules: ['probe'] });
+  const result = await page.evaluate(async () => {
+    const el = document.createElement('zb-disable-probe');
+    el.formDisabledCallback(true);
+    el.formDisabledCallback(false); // engines that notify before connect can end on false
+    document.getElementById('f').append(el);
+    await el.updateComplete;
+    return el.querySelector('output').textContent;
+  });
+  assert.equal(result, 'enabled');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a control with nothing focusable inside still reports invalid, without setValidity throwing', async () => {
+  const { page, messages } = await open('<form id="f"><zb-note-field name="note"></zb-note-field><button>Save</button></form>', { modules: ['note'] });
+  const result = await page.evaluate(() => {
+    const el = document.querySelector('zb-note-field');
+    return { valid: el.checkValidity(), message: el.validationMessage, text: el.querySelector('p').textContent };
+  });
+  assert.equal(result.text, 'empty');
+  assert.equal(result.valid, false);
+  assert.match(result.message, /Say something/);
+  assert.deepEqual(messages, []);
   await page.close();
 });
 

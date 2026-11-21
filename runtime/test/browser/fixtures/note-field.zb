@@ -1,0 +1,9 @@
+<!-- Validation with nothing focusable inside: setValidity must not throw (Safari rejects a
+     non-focusable anchor, including the host). -->
+<script>
+  import { validity } from '@zubra/runtime'
+  validity(() => (value ? "" : "Say something"))
+</script>
+<zb-note-field form-associated value="">
+  <p>{value || "empty"}</p>
+</zb-note-field>

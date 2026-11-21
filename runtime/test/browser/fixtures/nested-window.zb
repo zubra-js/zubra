@@ -1,0 +1,22 @@
+<!-- A window listener nested in a condition or a row. Hiding the outer branch, or removing
+     the row, must take the listener with it, including after the element is connected again. -->
+<script>
+  function hit(name) {
+    window.hits = (window.hits ?? 0) + 1
+    window.last = name
+  }
+</script>
+<zb-nested-window rows={["a"]} show={true} outer={true}>
+  <zb-if test={outer}>
+    <zb-if test={show}>
+      <zb-window onclick={() => hit("nested")}></zb-window>
+      <b>in</b>
+    </zb-if>
+    <zb-each items={rows} as="row" key={row}>
+      <zb-if test={true}>
+        <zb-window onclick={() => hit(row)}></zb-window>
+        <i>{row}</i>
+      </zb-if>
+    </zb-each>
+  </zb-if>
+</zb-nested-window>

@@ -194,6 +194,7 @@ function @list(start, end, read, key, create, leave, glide) {
     });
     for (const [id, row] of rows) {
       if (seen.has(id)) continue;
+      row.destroy?.();
       if (leave) leave(nodesOf(row), true);
       else for (const node of nodesOf(row)) node.remove();
     }
@@ -203,9 +204,9 @@ function @list(start, end, read, key, create, leave, glide) {
       const id = ids[index];
       let row = rows.get(id);
       if (!row) {
-        const { nodes, update } = create(item, index);
+        const { nodes, update, destroy } = create(item, index);
         // A row is everything from its first node to its last, with what a list inside it adds later.
-        row = { first: nodes.firstChild, last: nodes.lastChild, update, nodes };
+        row = { first: nodes.firstChild, last: nodes.lastChild, update, destroy, nodes };
         update(item, index); // filled in before it's on the page
       }
       next.set(id, row);
@@ -228,9 +229,17 @@ function @list(start, end, read, key, create, leave, glide) {
     }
     rows = next;
   };
+  // A listener nested in a row goes when the list does. The row's destroy drops it, and takes it
+  // off #mounted, so connecting the element again cannot put that row's listener back.
+  update.destroy = () => {
+    for (const row of rows.values()) row.destroy?.();
+    rows = new Map();
+  };
   if (!glide) return update;
   const elements = () => [...rows.values()].flatMap((row) => nodesOf(row).filter((node) => node.nodeType === 1));
-  return () => glide(elements(), update);
+  const run = () => glide(elements(), update);
+  run.destroy = () => update.destroy();
+  return run;
 }
 
 //@@ when: insert
@@ -241,10 +250,13 @@ function @list(start, end, read, key, create, leave, glide) {
 function @when(start, end, read, branches, leaving, leave) {
   let shown = -1;
   let update = null;
-  return () => {
+  let branch = null;
+  const run = () => {
     const index = read() ? 0 : 1;
     if (index !== shown) {
       shown = index;
+      branch?.destroy?.(); // a window listener in the branch goes with it, and one nested inside
+      branch = null;
       leaving?.(start, end); // slotted content inside goes back to wait, not away
       if (leave && start.nextSibling !== end) {
         const nodes = [];
@@ -255,7 +267,7 @@ function @when(start, end, read, branches, leaving, leave) {
       while (start.nextSibling !== end) start.nextSibling.remove();
       update = null;
       if (branches[index]) {
-        const branch = branches[index]();
+        branch = branches[index]();
         branch.update(); // filled in before it's on the page
         @insert(end.parentNode, branch.nodes, end);
         update = branch.update;
@@ -263,6 +275,15 @@ function @when(start, end, read, branches, leaving, leave) {
     }
     update?.();
   };
+  // The branch showing now may hold a listener of its own, or one in a condition or list inside
+  // it. Dropping this condition drops that listener too.
+  run.destroy = () => {
+    branch?.destroy?.();
+    branch = null;
+    update = null;
+    shown = -1;
+  };
+  return run;
 }
 
 //@@ leave:
@@ -616,6 +637,7 @@ function @dropStandIn(node) {
         region.provided = record.nodes.some(@isContent);
         if (region.provided) {
           if (region.fallback) {
+            region.fallback.destroy?.(); // a listener in the fallback goes with it
             while (start.nextSibling !== end) start.nextSibling.remove();
             region.fallback = null;
           }
@@ -637,9 +659,9 @@ function @dropStandIn(node) {
           const block = fallback();
           block.update();
           @insert(end.parentNode, block.nodes, end);
-          region.fallback = block.update;
+          region.fallback = block;
         }
-        region.fallback?.();
+        region.fallback?.update();
       },
     };
     record.region = region;
