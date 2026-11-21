@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +26,10 @@ export async function serve(dir = join(here, 'dist'), { port = 0, compiler = pro
       });
       return;
     }
-    let path = join(dir, decodeURIComponent(url.pathname));
+    let decoded;
+    try { decoded = decodeURIComponent(url.pathname); } catch { return response.writeHead(404).end(); }
+    let path = contained(dir, decoded);
+    if (!path) return response.writeHead(404).end();
     if (existsSync(path) && statSync(path).isDirectory()) path = join(path, 'index.html');
     let body;
     try {
@@ -41,6 +44,15 @@ export async function serve(dir = join(here, 'dist'), { port = 0, compiler = pro
   await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
   server.url = `http://127.0.0.1:${server.address().port}/`;
   return server;
+}
+
+/** `pathname` is already decoded (`%2f` and `%5c` are separators). It must stay inside `root`. */
+function contained(root, pathname) {
+  const base = resolve(root);
+  const file = resolve(base, pathname.replace(/^[/\\]+/, ''));
+  const rel = relative(base, file);
+  if (rel.startsWith('..') || rel.split(sep).includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) return null;
+  return file;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

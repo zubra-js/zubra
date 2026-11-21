@@ -88,7 +88,8 @@ test("an animation's values and target, and a meta's http-equiv, are the templat
   assert.deepEqual(set_, { begin: '0s', fill: 'freeze' });
   assert.equal(await page.$eval('spread-demo a[href="/ok"]', (a) => a.getAttribute('href')), '/ok');
   assert.equal(await page.$eval('spread-demo meta', (el) => el.getAttribute('http-equiv')), null);
-  assert.equal(messages.filter((message) => message.startsWith('error: zubra:')).length, 4, messages.join('\n'));
+  assert.equal(await page.$eval('spread-demo meta', (el) => el.getAttribute('content')), null, 'content goes with http-equiv');
+  assert.equal(messages.filter((message) => message.startsWith('error: zubra:')).length, 5, messages.join('\n'));
 });
 
 test("a key that can't be an attribute or CSS property name is left out, and the rest still applies (audit Z3)", async () => {

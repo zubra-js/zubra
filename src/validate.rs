@@ -2862,6 +2862,16 @@ impl<'a, 't: 'a> Context<'a, 't> {
             .filter(|other| other.name != crate::parser::SPREAD)
             .map(|other| other.name.to_ascii_lowercase())
             .collect();
+        // A `<meta http-equiv>` already redirects or sets a policy. A spread may not supply
+        // its `content`, including when `http-equiv` itself is in the spread and gets left out.
+        let meta_content = element.name.eq_ignore_ascii_case("meta")
+            && (element
+                .attributes
+                .iter()
+                .any(|attr| attr.name.eq_ignore_ascii_case("http-equiv"))
+                || entries
+                    .iter()
+                    .any(|(key, _)| key.eq_ignore_ascii_case("http-equiv")));
         for (key, value) in entries {
             if props.iter().any(|prop| spread_key_is_prop(&key, prop)) {
                 continue; // a prop of the child, passed as one
@@ -2900,7 +2910,7 @@ impl<'a, 't: 'a> Context<'a, 't> {
                 omit_name("an attribute name", &key);
                 continue;
             }
-            if spread_never_sets(&element.name, &name) {
+            if spread_never_sets(&element.name, &name) || (meta_content && name == "content") {
                 omit_name("one a spread may set here", &key);
                 continue;
             }
@@ -3024,7 +3034,7 @@ impl<'a, 't: 'a> Context<'a, 't> {
         }
         let is_boolean = BOOLEAN_ATTRIBUTES.contains(&&*lower);
         let is_url = URL_ATTRIBUTES.contains(&&*lower);
-        let is_srcset = lower == "srcset";
+        let is_srcset = lower == "srcset" || lower == "imagesrcset";
         let value = match &attribute.value {
             AttributeValue::None => None,
             AttributeValue::Text(parts) => {
@@ -3329,6 +3339,8 @@ fn is_safe_css_value(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     !text.contains([';', '{', '}', '<', '\\'])
         && !lower.contains("url(")
+        && !lower.contains("image(")
+        && !lower.contains("image-set(")
         && !lower.contains("expression(")
         && !lower.contains("@import")
 }
@@ -3441,7 +3453,7 @@ fn check_attribute_statically(attribute: &ast::Attribute) -> Result<(), Diagnost
             "interpolation in ping is not supported: a click posts to every URL it lists, with the visitor's cookies",
         ));
     }
-    if lower == "srcset" {
+    if lower == "srcset" || lower == "imagesrcset" {
         // A dynamic srcset is checked candidate by candidate once its value is known: when
         // rendering on the server (lower_attribute) and in the browser (the runtime's isSafeSrcset).
         if dynamic {

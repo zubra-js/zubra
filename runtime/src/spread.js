@@ -10,7 +10,7 @@ const ATTRIBUTE_NAME = /^[A-Za-z_:][A-Za-z0-9_.:-]*$/;
 const CSS_PROPERTY = /^(?:--[A-Za-z0-9_-]+|[A-Za-z][A-Za-z0-9-]*)$/;
 // One CSS value, as the server checks a spread's style: no `;`, braces, `<`, backslash,
 // url(), expression() or @import.
-const UNSAFE_CSS = /[;{}<\\]|url\(|expression\(|@import/i;
+const UNSAFE_CSS = /[;{}<\\]|url\(|image-set\(|image\(|expression\(|@import/i;
 
 const see = (section) => ` (see https://github.com/zubra-js/zubra/blob/main/docs/reference.md#${section})`;
 
@@ -87,7 +87,7 @@ export function spread(part, node) {
         continue;
       }
       const name = SPREAD_NAMES[lower] ?? (lower.startsWith('aria-') || lower.startsWith('data-') || node.namespaceURI !== 'http://www.w3.org/1999/xhtml' ? key : lower);
-      if (SPREAD_REFUSED.has(lower) || neverSpread(node.localName, lower)) {
+      if (SPREAD_REFUSED.has(lower) || neverSpread(node.localName, lower) || (node.localName === 'meta' && lower === 'content' && (node.hasAttribute('http-equiv') || Object.keys(given).some((name) => name.toLowerCase() === 'http-equiv')))) {
         console.error(`zubra: a spread can't set "${key}"${see('safety')}`);
         continue;
       }
@@ -177,7 +177,7 @@ export function spread(part, node) {
         continue;
       }
       const text = String(value);
-      if (name.toLowerCase() === 'srcset') {
+      if (name.toLowerCase() === 'srcset' || name.toLowerCase() === 'imagesrcset') {
         if (text.trim() === '' || !isSafeSrcset(text)) {
           if (text.trim() !== '') console.error(`zubra: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
           node.removeAttribute(name);

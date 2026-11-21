@@ -4,6 +4,26 @@ import { spread } from '../src/spread.js';
 import { State } from '../src/signal.js';
 import { root, flush } from '../src/effect.js';
 
+test('a spread does not set content on a meta that has http-equiv', () => {
+  const attrs = new Map([['http-equiv', 'refresh']]);
+  const node = {
+    localName: 'meta',
+    namespaceURI: 'http://www.w3.org/1999/xhtml',
+    style: { getPropertyValue: () => '', setProperty: () => {}, removeProperty: () => {} },
+    hasAttribute: (name) => attrs.has(name),
+    getAttribute: (name) => attrs.get(name) ?? null,
+    setAttribute: (name, value) => attrs.set(name, value),
+    removeAttribute: (name) => attrs.delete(name),
+  };
+  const scope = root(() => spread({ spread: () => ({ content: '0;url=https://evil.example/' }) }, node));
+  try {
+    assert.equal(attrs.has('content'), false);
+    assert.equal(attrs.get('http-equiv'), 'refresh');
+  } finally {
+    scope.dispose();
+  }
+});
+
 test('a spread omits unsafe style values and removes a previously safe one', () => {
   const styles = new Map();
   const node = {

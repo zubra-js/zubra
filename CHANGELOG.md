@@ -4,6 +4,17 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Fixed
+
+- **Framework server rendering drops hostile host attributes.** `renderToString` (what an Astro page's attributes go through) wrote every extra host attribute into the HTML, name and all, so a visitor's `"><script>` or `onmouseover` ran when the page was parsed. A name that isn't an attribute name, a string event handler, `innerHTML` and its kin, an object, and an unsafe URL (`javascript:`, `data:`, `vbscript:`, including one hidden by a character reference) are left off, as a spread already left them off.
+- **A dynamic `style:` value can't inject CSS.** `style:background-image={user}` applied `url(...)` in the browser, and a custom property took `</style>`, even though a value the server can see is rejected. The runtime now leaves a value that isn't a single CSS value off the element.
+- **A sync log can't apply `__proto__`, `constructor` or `prototype`.** A push of those names was already refused. A log that already held them (written before the check, or past the handler) was still applied when documents were rebuilt: `__proto__` set that document's prototype, and `constructor` / `prototype` showed up as fields. They're skipped, on the server and when a client merges a change. `prototype` is refused on a push too.
+- **A single-quoted attribute can't grow a second attribute.** The HTML output always uses double quotes. A literal `"` inside the value, including one around `{name}` written with single quotes, was copied through, so a visitor's prop closed the attribute and the rest (`ontoggle`, `open`) was parsed as its own. `"` and `<` in that literal are escaped. An `&` the author already wrote (`&amp;`) stays as written.
+- **A spread can't set `<meta http-equiv>`'s `content`.** `http-equiv` itself was already refused. `content` on a meta that has it (or a spread that tries to set both) was still written, which is a refresh to whatever URL the visitor supplied. It's left off, on the server and in the browser.
+- **Hydration doesn't bind a component's listeners to a visitor's lookalike markup.** An early `<!--]-->` or `<?zb ]?>` in a slot, or a child whose tags match the template but whose text doesn't, is not adopted: the component renders its own template. A child component is left to its own template. A matching element loses a URL, an event handler, `srcdoc` or `ping` the template doesn't have and no part binds (`formaction` or `onmouseover` on the template's button). An `id` the page wrote stays.
+- **The local playground and gallery servers stay inside their directory.** A request whose path decodes to `..` (`/..%2fsecret.txt`, `/zubra/..%2fsecret.txt`) is a 404. `index.html` in the directory is still served.
+- **An action result cookie with no `page` is ignored.** The cookie is shown only on the path it names. One without `page` matched every path.
+
 ## 6.0.1 — 2026-11-21
 
 ### Fixed

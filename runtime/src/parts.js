@@ -32,12 +32,19 @@ export function $toggle(part, node) {
   });
 }
 
-/** @internal `style:property={…}`: one property at a time, through the CSSOM, so a value can't add declarations. */
+// One CSS value, as the server checks it (`is_safe_css_value`) and as a spread does. The CSSOM
+// rejects some extra declarations; it still applies `url()` and a custom property's `</style>`.
+const UNSAFE_CSS = /[;{}<\\]|url\(|image-set\(|image\(|expression\(|@import/i;
+
+/** @internal `style:property={…}`: one property, through the CSSOM, so a value can't add declarations. */
 export function $style(part, node) {
   effect(() => {
     const value = $r(part.value());
-    if (value == null || value === false) node.style.removeProperty(part.style);
-    else if (node.style.getPropertyValue(part.style) !== String(value)) node.style.setProperty(part.style, String(value));
+    const text = value == null || value === false ? null : String(value);
+    if (text == null || typeof value === 'object' || typeof value === 'function' || UNSAFE_CSS.test(text)) {
+      if (text != null) console.error('zubra: style value left off', part.style);
+      node.style.removeProperty(part.style);
+    } else if (node.style.getPropertyValue(part.style) !== text) node.style.setProperty(part.style, text);
   });
 }
 

@@ -35,10 +35,7 @@ export function renderToString(Element, { props = {}, attributes = {}, slots = {
     if (name !== 'default' && !meta.slots.includes(name)) throw new Error(`zubra: <${meta.tag}> has no slot \`${name}\``);
   }
   const html = render(props, slots);
-  const extra = Object.entries(attributes)
-    .filter(([, value]) => value != null && value !== false)
-    .map(([name, value]) => (value === true ? ` ${name}` : ` ${name}="${escapeAttribute(String(value))}"`))
-    .join('');
+  const extra = hostAttributes(attributes);
   // Onto the host's start tag (the markup starts with it).
   return extra ? html.replace(/^(<[a-z][\w.-]*)/, `$1${extra}`) : html;
 }
@@ -98,4 +95,66 @@ export function shadowContent(Element, options) {
   return Element?.zubra?.shadow ? serverContent(Element, options) : '';
 }
 
-const escapeAttribute = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const escapeAttribute = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// The same names a spread may write (runtime/src/spread.js, src/validate.rs). A host attribute
+// from a page — Astro spreads the component's attributes through here — is often a visitor's data.
+const ATTRIBUTE_NAME = /^[A-Za-z_:][A-Za-z0-9_.:-]*$/;
+const REFUSED_ATTRIBUTE = new Set(['innerhtml', 'outerhtml', 'innertext', 'textcontent', 'srcdoc', 'ping', 'dangerouslysetinnerhtml', 'children']);
+const URL_ATTRIBUTES = new Set(['action', 'background', 'cite', 'codebase', 'data', 'formaction', 'href', 'longdesc', 'manifest', 'poster', 'profile', 'src', 'xlink:href', 'usemap']);
+
+/**
+ * A URL about to be written into HTML. Character references are decoded first, and a scheme
+ * hidden behind a leftover `&` (`javascript&#58alert(1)`, `javascript&colon;alert(1)`) is refused:
+ * the HTML parser decodes those, `setAttribute` does not. The schemes that remain match
+ * `isSafeUrl` (src/validate.rs).
+ */
+function isSafeHtmlUrl(value) {
+  let url = String(value).trim().replaceAll('\\', '/');
+  url = url.replace(/&#(x[0-9a-f]+|\d+);?/gi, (entity, body) => {
+    const code = body[0] === 'x' || body[0] === 'X' ? Number.parseInt(body.slice(1), 16) : Number.parseInt(body, 10);
+    if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) return entity;
+    try { return String.fromCodePoint(code); } catch { return entity; }
+  });
+  url = url.replace(/&(colon|tab|newline|amp);/gi, (entity, name) => ({ colon: ':', tab: '\t', newline: '\n', amp: '&' })[name.toLowerCase()]);
+  if (!url || /[\u0000-\u001f\u007f-\u009f]/.test(url) || url.startsWith('//')) return false;
+  const schemePart = url.split(/[/?]/)[0];
+  if (schemePart.includes('&')) return false;
+  const beforePath = url.split(/[/?#]/)[0];
+  const colon = beforePath.indexOf(':');
+  if (colon < 0) return true;
+  return ['http', 'https', 'mailto', 'tel'].includes(beforePath.slice(0, colon).toLowerCase());
+}
+
+function isSafeHtmlSrcset(value) {
+  const urls = String(value).split(',').map((candidate) => candidate.trim().split(/\s+/)[0]).filter(Boolean);
+  return urls.length > 0 && urls.every(isSafeHtmlUrl);
+}
+
+/** Host attributes for the start tag, or '' when none survive the same checks as a spread. */
+function hostAttributes(attributes) {
+  let extra = '';
+  for (const [name, value] of Object.entries(attributes ?? {})) {
+    if (value == null || value === false) continue;
+    const lower = name.toLowerCase();
+    const refused = !ATTRIBUTE_NAME.test(name) || REFUSED_ATTRIBUTE.has(lower) || (lower.length > 2 && lower.startsWith('on')) || (typeof value === 'object');
+    if (refused) {
+      console.error(`zubra: left \`${name}\` off the server HTML: a host attribute can't be a handler, markup, an object, or an unsafe name`);
+      continue;
+    }
+    if (value === true) {
+      extra += ` ${name}`;
+      continue;
+    }
+    const text = String(value);
+    if (URL_ATTRIBUTES.has(lower) || lower === 'srcset' || lower === 'imagesrcset') {
+      const safe = lower === 'srcset' || lower === 'imagesrcset' ? isSafeHtmlSrcset(text) : isSafeHtmlUrl(text);
+      if (!safe) {
+        console.error(`zubra: left \`${name}\` off the server HTML: its value isn't a safe URL`);
+        continue;
+      }
+    }
+    extra += ` ${name}="${escapeAttribute(text)}"`;
+  }
+  return extra;
+}

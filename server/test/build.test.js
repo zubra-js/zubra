@@ -369,7 +369,7 @@ test("in a browser: a collection component runs from the app's one module, and a
     await page.waitForFunction(() => window.inside && window.outside);
     assert.equal(await page.evaluate(() => window.inside === window.outside), true);
     assert.equal(await page.evaluate(() => window.follow === window.followOutside), false, "follow.js was asked for on its own, and found the module's store");
-    assert.deepEqual(asked.sort(), [`/_zubra/runtime/${app.file}`, '/_zubra/sync/connect.js', '/_zubra/sync/follow.js', '/_zubra/sync/index.js'].sort());
+    assert.deepEqual(asked.sort(), [`/_zubra/runtime/${app.file}`, '/_zubra/sync/connect.js', '/_zubra/sync/fields.js', '/_zubra/sync/follow.js', '/_zubra/sync/index.js'].sort());
     await page.waitForFunction(() => document.querySelector('kept-note button').textContent === 'second');
     assert.deepEqual(errors, []);
   } finally {

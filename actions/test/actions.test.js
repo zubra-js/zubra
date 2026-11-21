@@ -227,6 +227,8 @@ test('the result cookie is __Host- and Secure on HTTPS, and only the page the fo
   const planted = `__zb_result=${encodeURIComponent(JSON.stringify({ action: '/_zb/action/login-form/login', value: { error: 'Your account is locked: call +1-555-0100' }, page: '/account' }))}`;
   assert.equal(actions.result(new Request('https://shop.example/account', { headers: { cookie: planted } })), null);
   assert.ok(actions.result(new Request('http://localhost/account', { headers: { cookie: planted } })), 'over plain HTTP it is the only one there is');
+  const unpaged = `__zb_result=${encodeURIComponent(JSON.stringify({ action: '/_zb/action/login-form/login', value: { role: 'admin' } }))}`;
+  assert.equal(actions.result(new Request('http://localhost/other', { headers: { cookie: unpaged } })), null, 'a cookie with no page matches no path');
   // Behind a proxy that ends TLS, requests arrive as http: `secure: true` says the site is HTTPS.
   const proxied = createActionsCore({ routes: routesFrom({ '/_zb/action/login-form/login': () => ({ ok: true }) }), secure: true });
   const behind = await proxied.fetch(new Request('http://shop.example/_zb/action/login-form/login', { method: 'POST', headers: { origin: 'http://shop.example', referer: 'http://shop.example/account' }, body: new URLSearchParams({ email: 'a@b.c' }) }));

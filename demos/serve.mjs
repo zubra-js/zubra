@@ -5,7 +5,7 @@
 // Also imported by the gallery's test and the screenshot script (`serve(dir, base)`).
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, resolve } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TYPES = {
@@ -17,9 +17,11 @@ const TYPES = {
 /** Serve `dir` at `base`; resolves to the gallery's URL and a `close()`. */
 export function serve(dir, base = '/', port = 0) {
   const server = createServer((request, response) => {
-    const pathname = decodeURIComponent(new URL(request.url, 'http://x').pathname);
+    let pathname;
+    try { pathname = decodeURIComponent(new URL(request.url, 'http://x').pathname); } catch { return notFound(response); }
     if (!pathname.startsWith(base)) return notFound(response);
-    let path = join(dir, pathname.slice(base.length));
+    let path = contained(dir, pathname.slice(base.length));
+    if (!path) return notFound(response);
     // Pages redirects a directory without its slash; serving index.html there would break relative URLs.
     if (existsSync(path) && statSync(path).isDirectory()) {
       if (!pathname.endsWith('/')) {
@@ -41,6 +43,15 @@ export function serve(dir, base = '/', port = 0) {
   return new Promise((done) => server.listen(port, '127.0.0.1', () => {
     done({ url: `http://127.0.0.1:${server.address().port}${base}`, close: () => server.close() });
   }));
+}
+
+/** `pathname` is already decoded (`%2f` and `%5c` are separators). It must stay inside `root`. */
+function contained(root, pathname) {
+  const base = resolve(root);
+  const file = resolve(base, String(pathname).replace(/^[/\\]+/, ''));
+  const rel = relative(base, file);
+  if (rel.startsWith('..') || rel.split(sep).includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) return null;
+  return file;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

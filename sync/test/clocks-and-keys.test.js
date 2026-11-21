@@ -70,7 +70,7 @@ test('S2: a field named key is refused in a push and in write()', async () => {
 
 test("S2: a field named like what every object has is refused: __proto__ would set a document's prototype", async () => {
   const sync = createSyncServer({ authorize: allowAnyone });
-  for (const field of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+  for (const field of ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty']) {
     const refused = await push(sync, [change(field, { owner: 'mallory' }, stamp(Date.now()))]);
     assert.equal(refused.status, 400, field);
     assert.match((await refused.json()).error, /__proto__/);
@@ -81,6 +81,31 @@ test("S2: a field named like what every object has is refused: __proto__ would s
   const [doc] = (await sync.documents()).all('tasks');
   assert.equal(Object.getPrototypeOf(doc), Object.prototype);
   assert.equal(doc.owner, 'ada');
+});
+
+test('S2: a log that already holds __proto__, constructor or prototype does not set a prototype or surface those fields', async () => {
+  const only = memoryLog();
+  await only.append([change('__proto__', { admin: true }, stamp(1))]);
+  const empty = createSyncServer({ authorize: allowAnyone, log: only });
+  assert.deepEqual((await empty.documents()).all('tasks'), []);
+  assert.equal(Object.prototype.admin, undefined);
+
+  const log = memoryLog();
+  await log.append([
+    change('title', 'mine', stamp(1)),
+    change('__proto__', { admin: true }, stamp(2)),
+    change('constructor', { prototype: { admin: true } }, stamp(3)),
+    change('prototype', { admin: true }, stamp(4)),
+  ]);
+  const sync = createSyncServer({ authorize: allowAnyone, log });
+  const [doc] = (await sync.documents()).all('tasks');
+  assert.equal(doc.title, 'mine');
+  assert.equal(doc.key, 't1');
+  assert.equal(doc.admin, undefined);
+  assert.equal(Object.hasOwn(doc, 'constructor'), false);
+  assert.equal(Object.hasOwn(doc, 'prototype'), false);
+  assert.equal(Object.getPrototypeOf(doc), Object.prototype);
+  assert.equal(Object.prototype.admin, undefined);
 });
 
 test('S2: documents().all() lists each document under its own key, whatever its fields', async () => {

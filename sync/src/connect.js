@@ -14,6 +14,7 @@
 // Merging is last-writer-wins per field, by clock. A device that was offline pushes what it
 // wrote when it's back; whichever write has the later clock wins, on every device alike.
 import { onWrite, receive, currentStore, onPresence, receivePresence, peerId, newPeerId, startingPull } from './index.js';
+import { assignField, refusedField } from './fields.js';
 
 const CLOCKS = '$clocks';
 const pad = (number, width) => String(number).padStart(width, '0');
@@ -257,9 +258,10 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
       for (const [field, stamp] of Object.entries(mine.get(id) ?? {})) known[field] = newest(stamp, known[field]);
       const fields = {};
       for (const change of changes) {
+        if (refusedField(change.field)) continue;
         if (known[change.field] && known[change.field] >= change.clock) continue;
-        known[change.field] = change.clock;
-        fields[change.field] = change.value;
+        assignField(known, change.field, change.clock);
+        assignField(fields, change.field, change.value);
       }
       // An edit made here while the change was being stored still wins on screen.
       const stillNewer = (field) => field === CLOCKS || !(mine.get(id)?.[field] > known[field]);
@@ -376,9 +378,10 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
       const known = { ...doc[CLOCKS] };
       const fields = {};
       for (const change of changes) {
+        if (refusedField(change.field)) continue;
         if (known[change.field] && known[change.field] >= change.clock) continue;
-        known[change.field] = change.clock;
-        fields[change.field] = change.value;
+        assignField(known, change.field, change.clock);
+        assignField(fields, change.field, change.value);
       }
       if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known });
     }

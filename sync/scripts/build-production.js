@@ -13,8 +13,8 @@ const from = join(root, 'src');
 const to = join(root, 'dist/production');
 const check = process.argv.includes('--check');
 
-/** What a page loads: the store and 'use collection' (index), the connection, and its peers. */
-export const BROWSER = ['index.js', 'connect.js', 'webrtc.js', 'follow.js'];
+/** What a page loads: the store and 'use collection' (index), the connection, its peers, and the field names a document can't carry. */
+export const BROWSER = ['index.js', 'connect.js', 'webrtc.js', 'follow.js', 'fields.js'];
 
 /** A module, minified, under a header that points back to its source. */
 export function minified(source, file) {

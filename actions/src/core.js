@@ -179,9 +179,13 @@ export function createActionsCore({ routes, client = null, forms = null, origins
     } catch {
       return null;
     }
-    // Another page leaves it for the one the form came from.
+    // Another page leaves it for the one the form came from. A cookie with no `page` is not
+    // ours to show: without that field it would match every path.
     const path = (request.url ? new URL(request.url, 'http://localhost').pathname : null) ?? null;
-    if (found?.page && path && found.page !== path) return null;
+    if (typeof found?.page !== 'string' || (path && found.page !== path)) {
+      if (typeof found?.page !== 'string') setHeader?.('set-cookie', name === SECURE_COOKIE ? SECURE_CLEAR : CLEAR);
+      return null;
+    }
     setHeader?.('set-cookie', name === SECURE_COOKIE ? SECURE_CLEAR : CLEAR);
     const { page, ...rest } = found ?? {};
     return found && typeof found === 'object' ? rest : found;

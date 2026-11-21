@@ -1467,7 +1467,9 @@ impl<'a> Emitter<'a> {
                     self.template.push_str("=\"");
                     for part in parts {
                         if let Part::Literal(text) = part {
-                            self.template.push_str(text);
+                            let mut escaped = String::new();
+                            crate::render::escape_attribute_literal(text, &mut escaped);
+                            self.template.push_str(&escaped);
                         }
                     }
                     self.template.push('"');
@@ -1526,7 +1528,7 @@ impl<'a> Emitter<'a> {
                     } else if URL_ATTRIBUTES.contains(&lower.as_str()) {
                         // The check itself, imported where a component has one.
                         ", url: $url".to_owned()
-                    } else if lower == "srcset" {
+                    } else if lower == "srcset" || lower == "imagesrcset" {
                         ", srcset: $srcset".to_owned()
                     } else if custom
                         && child.is_none()

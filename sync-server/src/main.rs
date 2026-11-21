@@ -578,9 +578,11 @@ fn valid_change(change: &Value) -> bool {
         && clock_ok
 }
 
-/// The names every JavaScript object already has: documents are plain objects on every device,
-/// so `__proto__` would set a document's prototype and the rest would never be applied.
-const INHERITED: [&str; 12] = [
+/// The names every JavaScript object already has, plus `prototype`: documents are plain objects
+/// on every device, so `__proto__` would set a document's prototype and the rest would never be
+/// applied. `prototype` is not on `Object.prototype`; a merge that walks `constructor.prototype`
+/// must not find a field there either.
+const INHERITED: [&str; 13] = [
     "constructor",
     "__defineGetter__",
     "__defineSetter__",
@@ -593,6 +595,7 @@ const INHERITED: [&str; 12] = [
     "valueOf",
     "__proto__",
     "toLocaleString",
+    "prototype",
 ];
 
 /// How far ahead of this server's clock a pushed change's clock may be (the JavaScript server's

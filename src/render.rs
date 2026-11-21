@@ -49,7 +49,7 @@ fn render_node(node: &Node<'_>, output: &mut String) {
                 output.push_str(&attribute.name);
                 if let Some(parts) = &attribute.value {
                     output.push_str("=\"");
-                    render_parts(parts, output);
+                    render_attribute_value(parts, output);
                     output.push('"');
                 }
             }
@@ -75,6 +75,28 @@ fn render_parts(parts: &[Part<'_>], output: &mut String) {
         match part {
             Part::Literal(text) => output.push_str(text),
             Part::Escaped(text) => escape_html(text, output),
+        }
+    }
+}
+
+/// An attribute is always written in double quotes. A literal is the author's source, so `&`
+/// stays as written (`&amp;` must not become `&amp;amp;`), but `"` and `<` would end the
+/// attribute or open a tag: `title='"{name}"'` with a visitor's `name` was a second attribute.
+fn render_attribute_value(parts: &[Part<'_>], output: &mut String) {
+    for part in parts {
+        match part {
+            Part::Literal(text) => escape_attribute_literal(text, output),
+            Part::Escaped(text) => escape_html(text, output),
+        }
+    }
+}
+
+pub(crate) fn escape_attribute_literal(text: &str, output: &mut String) {
+    for character in text.chars() {
+        match character {
+            '"' => output.push_str("&quot;"),
+            '<' => output.push_str("&lt;"),
+            _ => output.push(character),
         }
     }
 }

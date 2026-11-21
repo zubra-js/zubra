@@ -526,6 +526,15 @@ fn a_spread_never_sets_an_animations_values_or_a_metas_http_equiv() {
     let children = &html[html.find("<svg>").unwrap()..];
     assert!(!children.contains("javascript:"), "{html}");
     assert!(!children.contains("http-equiv"), "{html}");
+    // A literal http-equiv stays; a spread must not fill in its content.
+    let source = r#"<x-meta attrs={{}}><meta http-equiv="refresh" {...attrs}></x-meta>"#;
+    let html = compile(
+        source,
+        r#"{"attrs": {"content": "0;url=https://evil.example/"}}"#,
+    )
+    .unwrap();
+    assert!(html.contains("http-equiv=\"refresh\""), "{html}");
+    assert!(!html.contains("content="), "{html}");
     // `animate`, `animateMotion`, `animateTransform` too; other elements keep `to` and `values`.
     let source = r#"<x-anim anim={{}}><svg><animate {...anim}/><animateTransform {...anim}/><g {...anim}/></svg></x-anim>"#;
     let html = compile(source, r#"{"anim": {"to": "x", "values": "y"}}"#).unwrap();

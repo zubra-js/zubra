@@ -1,3 +1,5 @@
+import { refusedField } from './fields.js';
+
 // The log that 'use collection' devices share (tier 1). A fetch handler, so it runs on Node
 // (through `node(req, res)`), Bun, Deno and workers; the log itself is pluggable, and in memory
 // by default. It keeps changes in order and hands them out after a cursor; it doesn't merge:
@@ -185,22 +187,10 @@ const clock = {
   },
 };
 
-/**
- * Field names a change can't have: `$clocks` is where a document keeps its fields' clocks, and
- * `key` is the document's own key wherever documents are listed (`{ key, ...fields }`), so a
- * field by that name would pass one document off as another.
- */
-const RESERVED = new Set(['$clocks', 'key']);
-/**
- * And the names every object already has (`__proto__`, `constructor`, `toString`…): documents are
- * plain objects, here and on every device, so `__proto__` would set a document's prototype (fields
- * it seems to have and never had) and the rest are never applied at all.
- */
-const INHERITED = Object.getOwnPropertyNames(Object.prototype);
-
+// Field names a change can't have: see fields.js (`key`, `$clocks`, `__proto__`, `constructor`, …).
 const valid = (change) =>
-  change && typeof change.collection === 'string' && typeof change.key === 'string' && typeof change.field === 'string' &&
-  clock.parse(change.clock) !== null && !RESERVED.has(change.field) && !INHERITED.includes(change.field);
+  change && typeof change.collection === 'string' && typeof change.key === 'string' &&
+  !refusedField(change.field) && clock.parse(change.clock) !== null;
 
 /** The largest counter a clock can carry; past it, the clock moves on a millisecond. */
 const MAX_COUNTER = 99_999;
@@ -238,6 +228,8 @@ function documentsOf() {
   return {
     /** Applies a change if its clock is the field's latest; returns what undoes it, if it did. */
     apply(change) {
+      // A log written before this check, or past the push handler, must not set a prototype.
+      if (refusedField(change?.field)) return null;
       let doc = docs.get(id(change.collection, change.key));
       if (!doc) docs.set(id(change.collection, change.key), (doc = { collection: change.collection, key: change.key, fields: {}, clocks: {} }));
       const known = doc.clocks[change.field];
@@ -769,7 +761,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     if (typeof collection !== 'string' || typeof key !== 'string' || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
       throw new TypeError('sync.write(collection, key, { field: value, … })');
     }
-    for (const name of Object.keys(fields)) if (RESERVED.has(name) || INHERITED.includes(name)) throw new TypeError(`sync.write: \`${name}\` can't be a field name`);
+    for (const name of Object.keys(fields)) if (refusedField(name)) throw new TypeError(`sync.write: \`${name}\` can't be a field name`);
     // A server that hasn't read its log yet (it just started, or a Durable Object was evicted)
     // hasn't seen the clocks in it: read it first, so this write comes after all of them. Once
     // the documents exist this doesn't wait, so a check and a write with no await between stay
