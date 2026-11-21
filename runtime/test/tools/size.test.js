@@ -52,8 +52,9 @@ const BUDGETS = {
   // new in this entry, about 30 B, to 18.875 KB. Hydration adopts server markup only when every
   // element's markers, static text and unbound attributes match the template, about 200 B, to
   // 19.25 KB. An adopted element also loses an event handler, srcdoc or ping, about 40 B, to
-  // 19.3 KB.)
-  'src/index.js': { gzip: 19.3 * 1024 },
+  // 19.3 KB. Disconnect drops window listeners, the slot observer and an in-flight fetch,
+  // and a promise that settles while detached wakes zb-await, about 400 B, to 19.75 KB.)
+  'src/index.js': { gzip: 19.75 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
   // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`, 14 KB until the list work,
   // 14.25 KB until the faster Signals core, 14.75 KB until rows without markers, 15 KB until
@@ -70,8 +71,9 @@ const BUDGETS = {
   // branch the server rendered, about 70 B, 3 B over: this entry has every optional module, and
   // what a server sends, zubra.js, stays under its own budget; 16 KB until a list's rows were
   // found by remembered places, about 230 B; 16.25 KB until server markup is adopted only when it
-  // matches the template, about 200 B).
-  'dist/production/index.js': { gzip: 16.5 * 1024 },
+  // matches the template, about 200 B; 16.5 KB until disconnect drops external listeners,
+  // observers and an in-flight fetch, about 330 B, to 17 KB).
+  'dist/production/index.js': { gzip: 17 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
   // `animate`'s leave() and glide(), loaded only by components that animate.
@@ -160,9 +162,10 @@ for (const [entry, budget] of Object.entries(ADAPTERS)) {
 // 15.9 KB, where every page loaded 19.5. The whole: 20.3 KB, 0.55 KB over what it was, since the
 // helpers are two more files (provide.js, and base.js itself) and small files compress worse.
 // 20.5 KB until hydration compares static text only, about 40 B, then skips a child
-// component's rendered tree, about 15 B more.
-const SERVED = 16 * 1024;
-const SERVED_WHOLE = 20.75 * 1024;
+// component's rendered tree, about 15 B more. 16 KB and 20.75 KB until disconnect drops
+// external listeners, observers and an in-flight fetch: the base to 16.5 KB, the whole to 21.25 KB.
+const SERVED = 16.5 * 1024;
+const SERVED_WHOLE = 21.25 * 1024;
 
 for (const [entry, budget, what] of [['base.js', SERVED, 'what every page loads'], ['core.js', SERVED_WHOLE, 'the whole script API']]) {
   test(`dist/production as served fits its budget: ${what}`, (t) => {
@@ -192,7 +195,8 @@ for (const [entry, budget, what] of [['base.js', SERVED, 'what every page loads'
 // 14.25 KB until a named slot could be passed on to a child component's slot, about 60 B.
 // 14.5 KB until server markup is adopted only when it matches the template, about 40 B here.
 // 14.625 KB until that check skips a child component's own tree, about 60 B.
-const BUNDLED = 14.75 * 1024;
+// 14.75 KB until disconnect drops external listeners and an in-flight fetch, about 390 B.
+const BUNDLED = 15.25 * 1024;
 
 test('dist/bundled/zubra.js fits its budget, under the file-by-file build', (t) => {
   const size = gzipSync(readFileSync(join(here, '../../dist/bundled/zubra.js'), 'utf8')).length;
@@ -204,9 +208,13 @@ test('dist/bundled/zubra.js fits its budget, under the file-by-file build', (t) 
 // form controls and their helpers, event modifiers and theirs, shadow roots and resource() are
 // files beside it (0.6 to 1.2 KB each), which a page loads only if its components name them.
 // 11.7 KB where the whole was 14.3: 2.6 KB less for a page that names none.
-// 12 KB until hydration's template check (12466 B), to 13 KB.
+// 12 KB until hydration's template check (12466 B), to 13 KB. modifiers.js is 1.2 KB once
+// a window listener is removed on disconnect and .self uses the original event target.
+// form.js is 1.3 KB once a pre-connect formDisabledCallback(false) is kept and setValidity
+// falls back when the anchor is not focusable. resource.js is 0.8 KB once an in-flight
+// fetch is aborted on disconnect.
 const SPLIT = 13 * 1024;
-const BESIDE = { 'provide.js': 900, 'modifiers.js': 1100, 'form.js': 1250, 'shadow.js': 650, 'resource.js': 700 };
+const BESIDE = { 'provide.js': 900, 'modifiers.js': 1200, 'form.js': 1300, 'shadow.js': 650, 'resource.js': 800 };
 
 test('dist/split: the base and each file beside it fit their budgets', (t) => {
   const size = (file) => gzipSync(readFileSync(join(here, '../../dist/split', file), 'utf8')).length;
