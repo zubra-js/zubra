@@ -80,8 +80,18 @@ fn style_values_that_could_add_css_are_refused_on_the_server() {
         "a { b",
         "x\\\\61",
     ] {
+        // A value (here a prop's default) is left off, not written; a literal is an error.
+        let html = zubra::compile(
+            &format!(
+                "<zb-x tone={{{}}}><p style:color={{tone}}>x</p></zb-x>",
+                serde_json_string(value)
+            ),
+            "{}",
+        )
+        .unwrap();
+        assert!(html.contains("<p>x</p>"), "{value}: {html}");
         let message = error(&format!(
-            "<zb-x tone={{{}}}><p style:color={{tone}}>x</p></zb-x>",
+            "<zb-x><p style:color={{{}}}>x</p></zb-x>",
             serde_json_string(value)
         ));
         assert!(

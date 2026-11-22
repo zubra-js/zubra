@@ -116,19 +116,83 @@ fn imagesrcset_is_checked_like_srcset() {
 
 #[test]
 fn a_style_value_cannot_break_out_of_css() {
+    // A visitor's value (a profile's colour) that isn't one CSS value is left off the element,
+    // with a warning, and the page renders: one of them can't fail the whole render (security
+    // audit 6). The value never reaches the HTML.
+    for (source, tone) in [
+        (
+            "<zb-box tone=\"\"><div style:color={tone}>x</div><p>rest</p></zb-box>",
+            "red}</style><script>alert(1)</script>",
+        ),
+        (
+            "<zb-box tone=\"\"><div style:background-image={tone}>x</div><p>rest</p></zb-box>",
+            "url(https://evil.test/x)",
+        ),
+        (
+            "<zb-box tone=\"\"><div style:background={tone}>x</div><p>rest</p></zb-box>",
+            "image-set(\"https://evil.test/x\" 1x)",
+        ),
+    ] {
+        let props = serde_json::json!({ "tone": tone }).to_string();
+        let html = compile(source, &props).unwrap();
+        assert!(html.contains("<div>x</div><p>rest</p>"), "{html}");
+        assert!(
+            !html.contains("style=") && !html.contains("<script"),
+            "{html}"
+        );
+        let request = serde_json::json!({
+            "command": "compile", "emit": "html", "path": "x.zb",
+            "files": { "x.zb": source }, "props": { "tone": tone }
+        });
+        let reply: serde_json::Value =
+            serde_json::from_str(&zubra::handle_request(&request.to_string())).unwrap();
+        let omitted = reply["omitted"].as_array().cloned().unwrap_or_default();
+        assert!(
+            omitted.iter().any(|item| item
+                .as_str()
+                .is_some_and(|text| text.contains("isn't a single CSS value"))),
+            "{reply}"
+        );
+    }
+    // A literal is the author's own: still an error.
     assert_error(
-        "<zb-box tone=\"\"><div style:color={tone}></div></zb-box>",
-        r#"{"tone":"red}</style><script>alert(1)</script>"}"#,
+        "<zb-box><div style:color={\"red; background: url(x)\"}></div></zb-box>",
+        "{}",
         "isn't a single CSS value",
     );
-    assert_error(
-        "<zb-box tone=\"\"><div style:background-image={tone}></div></zb-box>",
-        r#"{"tone":"url(https://evil.test/x)"}"#,
-        "isn't a single CSS value",
-    );
-    assert_error(
-        "<zb-box tone=\"\"><div style:background={tone}></div></zb-box>",
-        r#"{"tone":"image-set(\"https://evil.test/x\" 1x)"}"#,
-        "isn't a single CSS value",
-    );
+}
+
+#[test]
+fn a_value_cannot_set_the_page_s_base_or_what_a_link_loads() {
+    // `<base href>` decides where every relative URL on the page goes, the runtime's and the
+    // components' scripts included: a visitor's `https://evil.example/` passes a URL check and
+    // runs their script (security audit 6). A spread on `<link>` is a visitor's stylesheet.
+    for source in [
+        "<zb-x u=\"\"><base href={u}><a href=\"/account\">a</a></zb-x>",
+        "<zb-x u=\"\"><base href=\"/{u}/\"></zb-x>",
+        "<zb-x o={{}}><base {...o}></zb-x>",
+        "<zb-x o={{}}><link {...o}></zb-x>",
+        "<zb-x o={{}}><LINK {...o}></zb-x>",
+        "<zb-x u=\"\"><BASE HREF={u}></zb-x>",
+        "<zb-x o={{}}><Link {...o}></zb-x>",
+    ] {
+        let error = compile(source, "{}").expect_err(source);
+        assert!(
+            error.message.contains("<base href>") || error.message.contains("a spread can't go on"),
+            "{source}: {}",
+            error.message
+        );
+        assert!(
+            zubra::compile_js(source, "@zubra/runtime", "x.zb").is_err(),
+            "{source}: the browser's output is refused too"
+        );
+    }
+    // The template's own base, and a link whose URL is a checked value, still compile.
+    compile("<zb-x><base href=\"/app/\" target=\"_self\"></zb-x>", "{}").unwrap();
+    let html = compile(
+        "<zb-x u=\"\"><link rel=\"stylesheet\" href={u}></zb-x>",
+        r#"{"u":"javascript:alert(1)"}"#,
+    )
+    .unwrap();
+    assert!(html.contains("<link rel=\"stylesheet\">"), "{html}");
 }

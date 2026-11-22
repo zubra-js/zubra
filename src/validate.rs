@@ -166,6 +166,17 @@ fn omit_css_value(property: &str, value: &Value) {
     });
 }
 
+/// Note a `style:property={…}` left out of the HTML because its value isn't a single CSS value.
+fn omit_style_value(attribute: &str, text: &str) {
+    let start: String = text.chars().take(24).collect();
+    let more = if text.chars().count() > 24 { "…" } else { "" };
+    OMITTED.with(|omitted| {
+        omitted.borrow_mut().push(format!(
+            "left `{attribute}` out of the HTML: its value isn't a single CSS value (`{start}{more}`)"
+        ));
+    });
+}
+
 fn omit_name(what: &str, key: &str) {
     let start: String = key.chars().take(24).collect();
     let more = if key.chars().count() > 24 { "…" } else { "" };
@@ -1646,6 +1657,7 @@ impl<'a, 't: 'a> Context<'a, 't> {
                         check_attribute_statically(attribute)?;
                         check_animation_value(element, attribute)?;
                         check_meta_value(element, attribute)?;
+                        check_base_and_link(element, attribute)?;
                     }
                     self.resolve_nodes(&element.children, scopes)?;
                 }
@@ -2783,10 +2795,17 @@ impl<'a, 't: 'a> Context<'a, 't> {
             let text = expression::to_display_string(&value)
                 .map_err(|message| Diagnostic::new(crate::codes::VALUE_NOT_TEXT, *span, message))?;
             if !is_safe_css_value(&text) {
-                return Err(Diagnostic::new(crate::codes::UNSAFE_CSS_VALUE,
-                    *span,
-                    format!("`{}`'s value `{text}` isn't a single CSS value (it can't contain `;`, braces, `<`, a backslash, or url())", attribute.name),
-                ));
+                // A literal is the author's, and an error; a value is often a visitor's (a
+                // profile's colour), and one of them mustn't fail the whole render: it's left
+                // off, as in the browser, with a warning.
+                if matches!(expression, crate::expression::Expression::String(_)) {
+                    return Err(Diagnostic::new(crate::codes::UNSAFE_CSS_VALUE,
+                        *span,
+                        format!("`{}`'s value `{text}` isn't a single CSS value (it can't contain `;`, braces, `<`, a backslash, or url())", attribute.name),
+                    ));
+                }
+                omit_style_value(&attribute.name, &text);
+                continue;
             }
             styles.push(format!("{}: {text}", &attribute.name[6..]));
         }
@@ -3417,6 +3436,43 @@ fn check_meta_value(element: &ast::Element, attribute: &ast::Attribute) -> Resul
             format!("interpolation in <meta http-equiv> `{lower}` is not supported: a refresh there is a redirect to wherever the value says"),
         )
         .with_help("redirect on the server (a `load` can return redirect(…)), or write the value in the template"));
+    }
+    Ok(())
+}
+
+/// `<base href>` decides where every relative URL on the page goes, the page's own scripts
+/// and its forms' posts included: a visitor's `https://evil.example/` there passes any URL check
+/// and runs their script. And a `<link>`'s attributes decide what the page loads (a spread's
+/// `rel: 'stylesheet'` is the visitor's CSS). So `<base href>` is the template's text only, and a
+/// spread can't go on either (security audit 6).
+fn check_base_and_link(
+    element: &ast::Element,
+    attribute: &ast::Attribute,
+) -> Result<(), Diagnostic> {
+    let base = element.name.eq_ignore_ascii_case("base");
+    if !base && !element.name.eq_ignore_ascii_case("link") {
+        return Ok(());
+    }
+    if attribute.name == crate::parser::SPREAD {
+        return Err(Diagnostic::new(crate::codes::UNSAFE_INTERPOLATION,
+            attribute.span,
+            format!("a spread can't go on <{}>: its attributes decide what the page loads, and the object is often a visitor's data", element.name.to_ascii_lowercase()),
+        )
+        .with_help("write the element's attributes in the template"));
+    }
+    let dynamic = match &attribute.value {
+        AttributeValue::Expression(..) => true,
+        AttributeValue::Text(parts) => parts
+            .iter()
+            .any(|part| matches!(part, AstPart::Expression { .. })),
+        AttributeValue::None => false,
+    };
+    if base && dynamic && attribute.name.eq_ignore_ascii_case("href") {
+        return Err(Diagnostic::new(crate::codes::UNSAFE_INTERPOLATION,
+            attribute.span,
+            "interpolation in <base href> is not supported: the base decides where every relative URL on the page goes, its scripts included",
+        )
+        .with_help("write the base in the template, or leave it out and write the URLs in full"));
     }
     Ok(())
 }

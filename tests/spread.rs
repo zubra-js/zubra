@@ -100,12 +100,14 @@ fn a_spread_leaves_out_a_style_it_cant_write() {
     )
     .unwrap();
     assert!(html.contains(r#"<a style="margin: 0">go</a>"#), "{html}");
-    // A style the author writes is still checked as before.
-    let error = compile(
+    // A style the author writes is checked the same way: a value is left off, a literal fails.
+    let html = compile(
         "<x-a tone=\"\"><a style:color={tone}>go</a></x-a>",
         r#"{"tone":"red;}"}"#,
     )
-    .unwrap_err();
+    .unwrap();
+    assert!(html.contains("<a>go</a>"), "{html}");
+    let error = compile("<x-a><a style:color={\"red;}\"}>go</a></x-a>", "{}").unwrap_err();
     assert!(
         error.message.contains("isn't a single CSS value"),
         "{}",

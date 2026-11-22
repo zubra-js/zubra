@@ -9,7 +9,11 @@
 // (`plan/decisions/reactive-engine.md` in the project; docs/stability.md.)
 import { Signal as Implementation } from './signal-impl.js';
 
-export const Signal = globalThis.Signal ?? Implementation;
+// Only what is the API: a page's element with `id="Signal"` (or `<img name="Signal">`) is
+// `globalThis.Signal` too, and a visitor's id would otherwise stop every component (audit 6).
+const native = globalThis.Signal;
+export const Signal =
+  typeof native?.State === 'function' && typeof native.Computed === 'function' && typeof native.subtle?.untrack === 'function' ? native : Implementation;
 export const isNative = Signal !== Implementation;
 export const { State, Computed } = Signal;
 export const { untrack } = Signal.subtle;

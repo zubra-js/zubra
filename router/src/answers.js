@@ -16,7 +16,9 @@ export function checkedLocation({ location, external }, url) {
   }
   if (!['http:', 'https:'].includes(target.protocol)) throw new RouteError(`redirect() to a ${target.protocol} URL is refused`);
   if (target.origin !== url.origin && !external) throw new RouteError(`redirect() to ${target.origin}, another site: say redirect(to, { external: true }) if that's meant`);
-  return target.origin === url.origin ? target.pathname + target.search + target.hash : target.href;
+  // A path on this site that begins `//` (from `https://site//evil.example`, `.//evil.example` or
+  // `..//evil.example`) is protocol-relative in a Location header: one slash keeps it here.
+  return target.origin === url.origin ? '/' + (target.pathname + target.search + target.hash).replace(/^[/\\]+/, '') : target.href;
 }
 
 /** `return notFound()`: the path has nothing behind it (no such farm). The response is a 404. */

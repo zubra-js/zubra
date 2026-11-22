@@ -275,6 +275,9 @@ const closed = () => false;
 const NO_AUTHORIZE = 'This sync server takes no reads or writes from pages until it is told who may access them: pass createSyncServer({ authorize }) (or authorize: allowAnyone, for a page anyone may edit). See docs/sync.md, "Who may read and write".';
 const NO_WRITES = 'This sync server takes no writes from pages until it is told who may make them: pass createSyncServer({ authorize }) (or authorize: allowAnyone, for a page anyone may edit). See docs/sync.md, "Who may read and write".';
 
+/** How far a live stream may fall behind its reader, in events, before it's closed (the client reconnects from its cursor). */
+const MAX_BEHIND = 64;
+
 /** How many of a collection's documents `notice` counts, at most. */
 const NOTICE_KEYS = 1000;
 
@@ -625,9 +628,16 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       const { since, reset } = await startFrom(url.searchParams.get('since') ?? '0');
       let listener;
       let timer;
+      // Paced by the reader (security audit 6): a page that reads nothing must not make this
+      // server load the whole log into its stream, nor keep every change after. The backlog is
+      // read a page at a time as the reader takes the last, and a stream that falls more than
+      // MAX_BEHIND events behind is closed: its client reconnects from its cursor (as the binary).
+      let room = null;
       const stream = new ReadableStream({
         start: async (controller) => {
+          const waitForRoom = () => (controller.desiredSize > 0 ? null : new Promise((resolve) => (room = resolve)));
           const write = (text) => {
+            if (controller.desiredSize !== null && controller.desiredSize < -MAX_BEHIND) return close();
             try {
               controller.enqueue(encoder.encode(text));
             } catch {
@@ -668,6 +678,9 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
             if (!backlog.changes.length && !first) break;
             const shown = await visible(listener, backlog.changes);
             if (whole) count(whole, listener.scopes, backlog.changes, shown);
+            // One page waits here, unsent, until the reader has room: nothing more is read.
+            await waitForRoom();
+            if (!listeners.has(listener)) return;
             listener.send('changes', { changes: shown, cursor: backlog.cursor, ...(reset && first ? { reset: true } : {}) });
             if (!backlog.changes.length || String(backlog.cursor) === String(from)) break;
             from = backlog.cursor;
@@ -678,8 +691,16 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
           timer = setInterval(() => write(': keep-alive\n\n'), heartbeat);
           timer.unref?.();
         },
-        cancel: () => listener?.close(),
-      });
+        pull: () => {
+          room?.();
+          room = null;
+        },
+        cancel: () => {
+          room?.();
+          room = null;
+          listener?.close();
+        },
+      }, new CountQueuingStrategy({ highWaterMark: 4 }));
       return new Response(stream, {
         headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' },
       });
@@ -745,7 +766,9 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        res.write(value);
+        // As fast as the connection takes it: otherwise a client that reads nothing makes the
+        // stream's every event pile up in this socket's buffer instead.
+        if (!res.write(value)) await new Promise((resolve) => { res.once('drain', resolve); res.once('close', resolve); });
       }
     } catch {}
     res.end();

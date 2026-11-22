@@ -215,6 +215,15 @@ test("redirect() stays on the site unless it says it's leaving", async () => {
   assert.deepEqual(await to('//evil.example/login'), [303, '/evil.example/login']);
   assert.deepEqual(await to('/\\evil.example/'), [303, '/evil.example/']);
   assert.deepEqual(await to('http://localhost/cart'), [303, '/cart'], 'this site, written whole');
+  // This site's own address with a path that begins `//`, or a relative path that resolves to
+  // one: the origin is this site's, but a Location of `//evil.example/x` is another site
+  // (security audit 6). However it's spelled, the browser lands here.
+  for (const where of ['http://localhost//evil.example/x', 'http://localhost/\\evil.example/x', 'HTTP://LOCALHOST//evil.example', './/evil.example/x', '..//evil.example/x', './/evil.example/../evil', 'x/..//evil.example', '/./\\evil.example']) {
+    const [status, location] = await to(where);
+    assert.equal(status, 303, where);
+    assert.equal(new URL(location, 'http://localhost/go').host, 'localhost', `${where} -> ${location}`);
+    assert.ok(!/^[/\\]{2}/.test(location), `${where} -> ${location}`);
+  }
   errors.length = 0;
   assert.equal((await to('https://evil.example/login'))[0], 500);
   assert.equal((await to('javascript:alert(1)'))[0], 500);
