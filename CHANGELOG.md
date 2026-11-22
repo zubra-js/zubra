@@ -4,6 +4,8 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 6.0.4 — 2026-11-22
+
 ### Security
 
 Found by security audit 6, on 6.0.3.
