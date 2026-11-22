@@ -4,6 +4,18 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 6.0.4 — 2026-11-22
+
+### Security
+
+Found by security audit 6, on 6.0.3.
+
+- **`redirect()` keeps a same-site path that begins `//` on the site.** `@zubra/router` read a location as a browser does and refused another origin, but wrote a location on this site as its path, and a path can begin `//`: `redirect(next)` with `next` set to `https://this.site//evil.example/`, `.//evil.example` or `..//evil.example` answered `Location: //evil.example/`, which the browser reads as another site. It's written with one slash now, as a location that starts `//` already was.
+- **A value can't set the page's `<base>`, and a spread can't go on `<base>` or `<link>`.** `<base href={…}>` and `<base {...attrs}>` took a visitor's `https://evil.example/`, which passes the URL check, and the base then decided where every relative URL went: the page loaded the runtime and the components' modules from the visitor's site, and its forms posted there. A spread on `<link>` could be `{ rel: 'stylesheet', href }`. Both are compile errors now; a `<base>` the template writes still compiles.
+- **@zubra/sync's live stream is paced by the page reading it.** A page that opened `/live?since=0` and read nothing made the server load the whole log into that stream, and keep every change after it: ten such pages held 400 MB for a 200,000-change log, and any page that may read a collection could open them. The log is now read a page at a time as the page takes the last, a stream more than 64 events behind is closed (its page reconnects from its cursor, as with the `zubra-sync` binary), and Node's `handle()` writes only as fast as the connection takes it.
+- **A visitor's `style:` value is left off, not a failed render.** `style:color={tone}` with a prop that isn't a single CSS value (`red;}`) failed the whole server render, so one profile's colour took down every page that showed it. It's left off the element with a warning, as in the browser and as a spread's `style` already was; a literal one is still a compile error.
+- **Signals mode takes `globalThis.Signal` only when it is the API.** On a page, an element with `id="Signal"` (or `<img name="Signal">`) is `globalThis.Signal`, and in signals mode a visitor's id stopped every component on the page. A native `Signal` is used only when it has `State`, `Computed` and `subtle.untrack`.
+
 ## 6.0.3 — 2026-11-21
 
 ### Fixed

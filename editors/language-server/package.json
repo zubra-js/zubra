@@ -1,6 +1,6 @@
 {
   "name": "@zubra/language-server",
-  "version": "6.0.3",
+  "version": "6.0.4",
   "description": "Language server for .zb components: diagnostics, completion, hover and go to definition; and a TypeScript plugin that gives .ts files components' types",
   "license": "ISC",
   "repository": {

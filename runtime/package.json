@@ -1,6 +1,6 @@
 {
   "name": "@zubra/runtime",
-  "version": "6.0.3",
+  "version": "6.0.4",
   "description": "Browser runtime for Zubra compiled components: fine-grained signals, no virtual DOM",
   "license": "ISC",
   "repository": {

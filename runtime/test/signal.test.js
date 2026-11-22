@@ -72,7 +72,8 @@ test('unwatched graphs keep no back-references (collectable, free on write)', ()
 });
 
 test('signals mode (signal-tc39.js) uses the native Signal when the platform provides one', async () => {
-  const native = { State: class {}, Computed: class {}, subtle: {} };
+  // (The proposal's shape, as far as signals mode checks it: State, Computed, subtle.untrack.)
+  const native = { State: class {}, Computed: class {}, subtle: { untrack: (fn) => fn() } };
   globalThis.Signal = native;
   try {
     const module = await import(`../src/signal-tc39.js?native=${Date.now()}`);
