@@ -16,7 +16,7 @@
 // - other elements showing the same document, in this tab or another (BroadcastChannel), follow.
 //
 // Tier 0 of plan/sync-design.md: one device, no server. Merging is last-writer-wins per field.
-import { effect, onUnmount, Signal, state } from '@zubra/runtime';
+import { effect, onUnmount, raw, Signal, state } from '@zubra/runtime';
 import { refusedField } from './fields.js';
 
 /** `let editing = ephemeral(false)`: state the collection doesn't store. */
@@ -137,7 +137,17 @@ if (typeof addEventListener === 'function') {
 const lists = new Map();
 function deliver(collection, key, fields, from) {
   for (const apply of bound.get(docId(collection, key)) ?? []) if (apply !== from) apply(fields);
-  for (const hear of lists.get(collection) ?? []) hear(key, fields);
+  // A list is told after the document's own elements, and only what a document can be: a key or
+  // fields of another type (a log that isn't Zubra's, another tab's message) stop here, and one
+  // list failing never stops the next, or the change going on to the other tabs.
+  if (typeof key !== 'string' || !fields || typeof fields !== 'object') return;
+  for (const hear of lists.get(collection) ?? []) {
+    try {
+      hear(key, fields);
+    } catch (error) {
+      console.error(`@zubra/sync: a documents() list couldn't take ${collection}/${key}`, error);
+    }
+  }
 }
 
 /** Plain JSON of a state value; reading it all also subscribes to every nested change. */
@@ -247,28 +257,71 @@ let warnedAll = false;
  * `{ key, ...fields }` (what the server's `documents().all()` gives), sorted by key, and kept
  * current: a document that appears is a new item, a field that changes is that item's. With a
  * prefix, only the documents whose key starts with it; a function (`() => \`${board}/\``) is
- * followed when what it reads changes. `start` is the list until the store has been read: what
+ * followed when what it reads changes, and while it gives `null` or `undefined` the list is empty. `start` is the list until the store has been read: what
  * the server rendered (the compiler renders it there). The list is for reading: an edit goes
  * through a `'use collection'` component, or the server.
  */
 export function documents(name, prefix = '', start = []) {
-  const read = () => String((typeof prefix === 'function' ? prefix() : prefix) ?? '');
+  // A prefix function that has nothing to give yet (`null`, `undefined`) lists nothing: only
+  // `documents('orders')`, written out, is the whole collection.
+  const read = () => {
+    const now = typeof prefix === 'function' ? prefix() : prefix ?? '';
+    return now === null || now === undefined ? null : String(now);
+  };
   const entry = (key, fields) => {
     const doc = { key };
     for (const [field, value] of Object.entries(fields)) if (!refusedField(field)) doc[field] = snapshot(value);
     return doc;
   };
   const byKey = (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
-  const given = (Array.isArray(start) ? start : []).filter((doc) => doc && typeof doc.key === 'string');
+  const given = (Array.isArray(start) ? start : []).filter((doc) => doc && typeof doc === 'object' && typeof doc.key === 'string');
   // The reactive array a `let` holds: the component's state wraps the same one.
   const list = state(given.map((doc) => entry(doc.key, doc)).sort(byKey)).get();
-  const put = (key, fields, skip = null) => {
-    let at = list.findIndex((doc) => doc.key >= key);
-    if (at < 0) at = list.length;
-    if (list[at]?.key !== key) return void list.splice(at, 0, entry(key, fields));
+  // Where `key` is, or belongs: a binary search of the array itself (not its proxy, which would
+  // track every item looked at), since the list is always in key order.
+  const find = (key) => {
+    const items = raw(list);
+    let low = 0;
+    let high = items.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (items[middle].key < key) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  const update = (at, fields, skip) => {
     for (const [field, value] of Object.entries(fields)) {
       if (!refusedField(field) && !skip?.has(field)) list[at][field] = snapshot(value);
     }
+  };
+  const put = (key, fields) => {
+    const at = find(key);
+    if (raw(list)[at]?.key === key) update(at, fields);
+    else list.splice(at, 0, entry(key, fields));
+  };
+  // The store's documents, which come in key order: fields into the items already here, and the
+  // new ones merged in one pass (an insert each would move the rest of the list every time).
+  const merge = (stored, changed) => {
+    const added = [];
+    for (const [key, doc] of stored) {
+      if (typeof key !== 'string' || !doc || typeof doc !== 'object' || !key.startsWith(current)) continue;
+      const at = find(key);
+      if (raw(list)[at]?.key === key) update(at, doc, changed.get(key));
+      else added.push(entry(key, doc));
+    }
+    if (!added.length) return;
+    added.sort(byKey);
+    const items = raw(list);
+    const merged = [];
+    let next = 0;
+    for (const item of items) {
+      while (next < added.length && added[next].key < item.key) merged.push(added[next++]);
+      merged.push(item);
+    }
+    while (next < added.length) merged.push(added[next++]);
+    list.splice(0);
+    for (let at = 0; at < merged.length; at += 5000) list.push(...merged.slice(at, at + 5000));
   };
 
   let current = null;
@@ -289,28 +342,30 @@ export function documents(name, prefix = '', start = []) {
     if (lists.get(name)?.size === 0) lists.delete(name);
   });
 
+  let started = false;
   effect(() => {
     const now = read();
     Signal.subtle.untrack(() => {
-      // Another prefix is another list; the first keeps what the page was given.
-      if (current !== null && current !== now) list.splice(0);
-      else if (current === null) for (let at = list.length - 1; at >= 0; at--) if (!list[at].key.startsWith(now)) list.splice(at, 1);
+      // Another prefix is another list; the first keeps what the page was given under it.
+      if (started && current !== now) list.splice(0);
+      else if (!started) for (let at = list.length - 1; at >= 0; at--) if (now === null || !list[at].key.startsWith(now)) list.splice(at, 1);
+      started = true;
       current = now;
     });
-    const changed = (heard = new Map());
-    let cancelled = false;
+    heard = null;
+    if (now === null) return;
     const store = theStore();
     if (typeof store.all !== 'function') {
-      heard = null;
       if (!warnedAll) console.error(`@zubra/sync: this store has no all(collection, prefix), so documents(${JSON.stringify(name)}) starts with what it was given and only hears changes from now on`);
       warnedAll = true;
       return;
     }
+    const changed = (heard = new Map());
+    let cancelled = false;
     fresh()
       .then(() => store.all(name, now))
       .then((stored) => {
-        if (cancelled) return;
-        for (const [key, doc] of stored ?? []) if (key.startsWith(now)) put(key, doc, changed.get(key));
+        if (!cancelled) Signal.subtle.untrack(() => merge(stored ?? [], changed));
       })
       .catch((error) => console.error(`@zubra/sync: couldn't list ${name}/${now}`, error))
       .finally(() => {
@@ -434,6 +489,8 @@ export function indexedDBStore(database = 'zubra-sync') {
       work(docs, (value) => (result = value));
       transaction.oncomplete = () => resolve(result);
       transaction.onerror = () => reject(transaction.error);
+      // A handler that throws aborts the transaction with neither of those: say so, not nothing.
+      transaction.onabort = () => reject(transaction.error ?? new Error('@zubra/sync: the store\'s transaction was aborted'));
     });
   };
   return {
@@ -455,7 +512,9 @@ export function indexedDBStore(database = 'zubra-sync') {
         const request = docs.openCursor(IDBKeyRange.bound([collection, prefix], [`${collection}\u0000`], false, true));
         request.onsuccess = () => {
           const cursor = request.result;
-          if (!cursor || !cursor.key[1].startsWith(prefix)) return;
+          // (A key that isn't a string, which only a log that isn't Zubra's could have sent, sorts
+          // after every string: nothing of this prefix follows it.)
+          if (!cursor || typeof cursor.key[1] !== 'string' || !cursor.key[1].startsWith(prefix)) return;
           found.push([cursor.key[1], cursor.value]);
           cursor.continue();
         };

@@ -1194,3 +1194,24 @@ test('documents(): a store without all() says so once, and the list still hears 
   assert.match(errors[0], /this store has no all\(collection, prefix\), so documents\("orders"\)/);
   await context.close();
 });
+
+// Security audit of #433: the device doesn't check a change's key, and IndexedDB sorts an array
+// key after every string, inside the range all() reads. Reading it threw in the cursor's handler,
+// which aborted the transaction with nothing said: all() never settled, on every load.
+test('documents(): a stored key that is not a string ends the listing; all() still answers', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/orders?doc=d5&local`);
+  await tab.waitForFunction(() => customElements.get('order-list'));
+  const answers = await tab.evaluate(async () => {
+    const { indexedDBStore, receive } = await import('/sync/index.js');
+    await receive('orders', 'd5/1', { item: 'Pie', status: 'new' });
+    await receive('orders', ['not', 'a', 'string'], { item: 'Odd' });
+    const store = indexedDBStore();
+    const within = (asked) => Promise.race([asked.then((all) => all.map(([key]) => key).filter((key) => key.startsWith('d5') || key.startsWith('zz'))), new Promise((done) => setTimeout(() => done('never settled'), 2000))]);
+    return [await within(store.all('orders', 'd5/')), await within(store.all('orders', 'zz/')), await within(store.all('orders', ''))];
+  });
+  assert.deepEqual(answers, [['d5/1'], [], ['d5/1']]);
+  await lists(tab, ['Pie:new']);
+  await context.close();
+});

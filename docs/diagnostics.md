@@ -132,7 +132,7 @@ The ranges: ZB1xxx parsing (ZB15xx the JSX front end), ZB2xxx the template (ZB21
 | <a id="zb3203"></a>`ZB3203` | A component with more than one route, layout or collection. |
 | <a id="zb3204"></a>`ZB3204` | A `'use collection'` without a valid name or `by` list. |
 | <a id="zb3205"></a>`ZB3205` | A collection keyed by a prop the host doesn't declare. |
-| <a id="zb3206"></a>`ZB3206` | A `documents()` list declared with `const` instead of `let`. |
+| <a id="zb3206"></a>`ZB3206` | A `documents()` list that isn't the whole value of a top-level `let`. |
 
 ## Props and their types (ZB4xxx)
 
