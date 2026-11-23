@@ -1,14 +1,18 @@
 :root {
   --bg: #ffffff; --surface: #f4f5fa; --ink: #14161f; --muted: #5b6074; --line: #dfe2ea; --accent: #4f5df5; --on-accent: #ffffff;
   --code-bg: #f4f5fa; --code-ink: #3d4257; --t-comment: #5b6074; --t-tag: #b0235c; --t-attr: #8a4b00; --t-string: #0b6b3a; --t-keyword: #4a3fd0; --t-fn: #0b5cad; --t-num: #9a3412;
+  --chrome-bg: #ffffff; --hero-bg: #eef0ff; --stripe-a: #14161f; --stripe-b: #4f5df5;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #12141b; --surface: #1a1d27; --ink: #e8eaf2; --muted: #9aa0b4; --line: #2c3040; --accent: #8b95ff; --on-accent: #12141b;
     --code-bg: #0d0f15; --code-ink: #b8bdd0; --t-comment: #8d93a8; --t-tag: #ff8fb3; --t-attr: #f5b97a; --t-string: #7ee0a6; --t-keyword: #aab2ff; --t-fn: #7cc4ff; --t-num: #ffa27a;
+    --chrome-bg: #14161f; --hero-bg: #14161f; --stripe-a: #14161f; --stripe-b: #8b95ff;
     color-scheme: dark;
   }
+  /* The hero sits a step above the page in dark, so its raised surfaces and muted text are a step lighter. */
+  .hero { --surface: #232738; --muted: #a8aec2; }
 }
 * { box-sizing: border-box; }
 html { --header: 3.5rem; scroll-padding-top: calc(var(--header) + 26px + 1rem); }
@@ -22,24 +26,23 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
 h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
 
 /* Header */
-.top { position: sticky; top: 0; z-index: 10; box-sizing: border-box; height: var(--header); display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; background: #14161f; color: #f2f3f8; border-bottom: 1px solid #2c3040; }
+.top { position: sticky; top: 0; z-index: 10; box-sizing: border-box; height: var(--header); display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; background: var(--chrome-bg); color: var(--ink); border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 0.6rem; color: inherit; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.03em; text-decoration: none; }
-.brand .mark { width: 1.9rem; height: 1.9rem; --accent: #8b95ff; }
+.brand .mark { width: 1.9rem; height: 1.9rem; }
 .top nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; font-size: 0.95rem; }
-.top nav a { color: #f2f3f8; text-decoration: none; }
-.top nav a:hover { color: #8b95ff; }
+.top nav a { color: var(--ink); text-decoration: none; }
+.top nav a:hover { color: var(--accent); }
 
-/* Hero (dark in both colour schemes) */
-.hero { --code-bg: #0d0f15; --code-ink: #b8bdd0; --t-comment: #8d93a8; --t-tag: #ff8fb3; --t-attr: #f5b97a; --t-string: #7ee0a6; --t-keyword: #aab2ff; --t-fn: #7cc4ff; --t-num: #ffa27a; --accent: #8b95ff; --on-accent: #12141b; --surface: #232738; --line: #2c3040; --muted: #a8aec2;
-  background: #14161f; color: #f2f3f8; padding: 4.5rem 0 4rem; }
+/* Hero: follows the colour scheme like the rest of the page */
+.hero { background: var(--hero-bg); color: var(--ink); padding: 4.5rem 0 4rem; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.5rem; align-items: center; }
 @media (min-width: 62rem) { .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem; } }
 .kicker { margin: 0 0 1rem; color: var(--accent); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .hero h1 { margin: 0 0 1.25rem; font-size: clamp(2.1rem, 4.4vw, 3.4rem); font-weight: 800; letter-spacing: -0.035em; }
 .lede { margin: 0 0 1.75rem; max-width: 40rem; color: var(--muted); font-size: 1.15rem; }
-.install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; max-width: 30rem; margin-bottom: 1.25rem; padding: 0.7rem 0.8rem 0.7rem 1rem; border: 1px solid var(--line); border-radius: 0.7rem; background: #0d0f15; }
-.install code { flex: 1; min-width: 0; padding: 0; background: none; color: #f2f3f8; font-size: 1rem; overflow-wrap: anywhere; }
-.copy { padding: 0.35rem 0.8rem; border: 1px solid #3a3f55; border-radius: 0.45rem; background: #232738; color: #f2f3f8; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; max-width: 30rem; margin-bottom: 1.25rem; padding: 0.7rem 0.8rem 0.7rem 1rem; border: 1px solid var(--line); border-radius: 0.7rem; background: var(--code-bg); }
+.install code { flex: 1; min-width: 0; padding: 0; background: none; color: var(--ink); font-size: 1rem; overflow-wrap: anywhere; }
+.copy { padding: 0.35rem 0.8rem; border: 1px solid var(--line); border-radius: 0.45rem; background: var(--surface); color: var(--ink); font: inherit; font-size: 0.85rem; cursor: pointer; }
 /* Until the element is live the button would do nothing, so the command stays and the button waits. */
 copy-button:not(:state(hydrated)) .copy { display: none; }
 .copy:hover { border-color: var(--accent); }
@@ -53,7 +56,7 @@ copy-button:not(:state(hydrated)) .copy { display: none; }
 
 /* The zebra band */
 /* Scrolls with the page until it meets the header, then stays under it as part of the header. */
-.stripes { position: sticky; top: var(--header); z-index: 9; height: 26px; background: repeating-linear-gradient(-45deg, #14161f 0 13px, #8b95ff 13px 26px); }
+.stripes { position: sticky; top: var(--header); z-index: 9; height: 26px; background: repeating-linear-gradient(-45deg, var(--stripe-a) 0 13px, var(--stripe-b) 13px 26px); }
 
 /* Sections */
 section { padding: 4.5rem 0; }
