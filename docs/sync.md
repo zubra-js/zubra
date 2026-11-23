@@ -58,6 +58,8 @@ import { configure, memoryStore } from '@zubra/sync';
 configure({ store: { get: async (collection, key) => doc, set: async (collection, key, fields) => {} } });
 ```
 
+A store that also has `all(collection, prefix)` can be listed by [`documents()`](#a-list-that-grows); the built-in ones have it.
+
 ## Sharing between devices
 
 Tier 0 keeps a document on one device. To share it, start a connection on the page and serve the log:
@@ -198,7 +200,38 @@ export async function claim(formData, context) {
 
 ### A list that grows
 
-A component follows one document, the one its key props name. So every card on a board is live, but nothing on the page hears that `orders/o-18` now exists: no element was rendered with that key. A component can't follow a collection, or a key prefix of one, yet. What works today is an index document: the server keeps the list's keys in one document, the board follows that, and each key is a card following its own.
+A `'use collection'` component follows one document, the one its key props name. So every card on a board is live, but nothing on the page hears that `orders/kitchen/o-18` now exists: no element was rendered with that key. `documents()` is the list itself: every document of a collection, or those under a key prefix, kept current.
+
+```html
+<!-- order-list.zb -->
+<script>
+  import { documents } from '@zubra/sync';
+
+  let orders = documents('orders', () => `${board}/`, ordersNow);
+  const open = orders.filter((order) => order.status !== 'served');
+</script>
+
+<order-list board="" orders-now={[]}>
+  <zb-each items={open} as="order" key={order.key}>
+    <p>{order.item}: {order.status}</p>
+  </zb-each>
+</order-list>
+```
+
+```html
+<!-- the page, with the list the server has: docs.all('orders', 'kitchen/') -->
+<order-list board="kitchen" orders-now='[{"key":"kitchen/o-17","item":"Soup","status":"new"}]'></order-list>
+```
+
+- **Each item is `{ key, ...fields }`**, what the server's `documents().all()` gives, and the list is sorted by key. For another order, or a part of it, derive one (`open` above): it follows the list.
+- **A new document is a new item, as data.** When anyone writes `orders/kitchen/o-18` (the server, another device, a component on this page or in another tab), the list gets an item and `zb-each` a row. A field that changes is that item's, and only what reads it updates. The page isn't fetched again.
+- **The arguments**: the collection; a key prefix (all of it without one), which may be a function, followed when the props it reads change; and the starting list, which is what the server renders and what shows until the device's store has been read. Then the store's documents join it. It needs no `'use collection'`, and inside one it isn't a field of the component's own document.
+- **Declare it with `let`.** A `const` would be read once, and is a compile error (`ZB3206`).
+- **It's for reading.** Assigning to an item changes this page only. To edit a document, render a `'use collection'` component for it (`<order-card doc={order.key}>`), or post to a [server action](actions.md).
+- **It lists what this device has.** A connected page has what its `scope` and the server's `authorize` let through, so scope the collection by the same prefix (`connect({ scope: { orders: 'kitchen/' } })`). Documents aren't deleted in Sync: a list grows, and what should leave it is a field (`status`) the list is filtered by.
+- **A store of your own** needs `all(collection, prefix)`, answering `[[key, fields], …]` by key, beside `get` and `set`. Without it the list starts with what it was given, hears changes from then on, and says so once in the console.
+
+**Where the list isn't a prefix** (the orders one driver holds, a hand-picked order), keep an index document instead: the server writes the list's keys into one document, a board follows that, and each key is a card following its own.
 
 ```js
 // on the server: the order first, then the board's list of keys
@@ -223,17 +256,11 @@ await sync.write('boards', 'kitchen', { open: docs.all('orders').filter((order) 
 </order-board>
 ```
 
-```html
-<order-board board="kitchen" open-now='["o-17"]'></order-board>
-```
+- **The list is the server's.** It replaces the whole array each time, and last writer wins per field, so two pages writing it would drop each other's keys. Refuse `kind: 'change'` for the index collection in `authorize`. A key the server takes off the list takes its card with it.
+- **A scoped page needs both collections**: the index document's and the cards'.
+- **For a board that is the server's HTML**, keep a counter in the index document (`rev`, one more on every change), follow it with `let rev = 0` and `watch(() => rev, …)`, and fetch the board's HTML when it fires.
 
-- **A new card arrives as data.** When the server writes the list, every open board gets it over the live stream and renders a card for the new key; the card loads its own document, which the page already has, since the order was written first. A key the server takes off the list takes its card with it. The page isn't fetched again.
-- **`from(openNow)`** starts the list from what the server rendered, so the cards are in the HTML and the page is complete before JavaScript. A plain `let open = []` works too, and renders an empty board until the document loads.
-- **The list is the server's.** It replaces the whole array each time, and last writer wins per field, so two pages writing it would drop each other's keys. Refuse `kind: 'change'` for the index collection in `authorize`, and move cards with a [server action](actions.md). A page that only shows the board can use `follow()`.
-- **A scoped page needs both collections**: the index document and the cards' (`scope: { boards: 'kitchen', orders: true }`, or a prefix of the orders' keys).
-- **For a board that is the server's HTML**, not components per card, keep a counter in the index document instead (`rev`, one more on every change), follow it with `let rev = 0` and `watch(() => rev, …)`, and fetch the board's HTML when it fires. That tells the page "the list changed" without a timed reload.
-
-`sync/test/browser.test.js` ("an index document") checks the list growing, a card changing, a card leaving and the counter, against a page that is never fetched twice.
+`sync/test/browser.test.js` checks both (`documents()` and "an index document") against pages that are never fetched twice.
 
 ### On Cloudflare Workers: a Durable Object
 

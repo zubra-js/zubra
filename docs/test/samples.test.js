@@ -41,12 +41,17 @@ test("Sync's presence sample compiles", () => {
   compile(board, 'board-view.zb', '--emit', 'js');
 });
 
-test("Sync's index-document sample compiles, following the list of keys", () => {
+test("Sync's list samples compile: documents() renders its starting list, and the index document's board follows its keys", () => {
   const page = readFileSync(join(root, 'docs/sync.md'), 'utf8');
-  const [board] = blocksAfter(page, '### A list that grows', 'html');
+  const [list, , board] = blocksAfter(page, '### A list that grows', 'html');
+  assert.match(list, /<!-- order-list\.zb -->/);
+  const props = join(work, 'orders.json');
+  writeFileSync(props, JSON.stringify({ board: 'kitchen', ordersNow: [{ key: 'kitchen/o-17', item: 'Soup', status: 'new' }, { key: 'kitchen/o-16', item: 'Tea', status: 'served' }] }));
+  const html = compile(list, 'order-list.zb', '--props', props);
+  assert.match(html, /<p>Soup: new<\/p>/);
+  assert.doesNotMatch(html, /<p>Tea/);
   assert.match(board, /<!-- order-board\.zb -->/);
-  const module = compile(board, 'order-board.zb', '--emit', 'js');
-  assert.match(module, /\$collection\("boards", \["board"\], \$p, \{ open \}\)/);
+  assert.match(compile(board, 'order-board.zb', '--emit', 'js'), /\$collection\("boards", \["board"\], \$p, \{ open \}\)/);
 });
 
 test('blocksAfter finds the blocks after a heading only', () => {

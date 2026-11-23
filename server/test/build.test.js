@@ -292,7 +292,7 @@ writeFileSync(join(synced, 'plain', 'plain-card.zb'), '<plain-card>\n  <p>plain<
 const inside = join(synced, 'inside.js');
 writeFileSync(inside, "import { currentStore } from '@zubra/sync';\nimport { follow } from '@zubra/sync/follow';\nwindow.inside = currentStore();\nwindow.follow = follow;\n");
 after(() => rmSync(synced, { recursive: true, force: true }));
-const SYNC_NAMES = ['collection', 'configure', 'currentStore', 'ephemeral', 'indexedDBStore', 'memoryStore', 'newPeerId', 'onPresence', 'onWrite', 'peerId', 'peers', 'presence', 'receive', 'receivePresence', 'startingPull'];
+const SYNC_NAMES = ['collection', 'configure', 'currentStore', 'documents', 'ephemeral', 'indexedDBStore', 'memoryStore', 'newPeerId', 'onPresence', 'onWrite', 'peerId', 'peers', 'presence', 'receive', 'receivePresence', 'startingPull'];
 
 test("buildApp puts @zubra/sync in the module when a component or a script uses it, and says what it exports", async () => {
   const app = await buildApp({ components: join(synced, 'components'), scripts: [inside] });

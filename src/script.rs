@@ -190,6 +190,9 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     let mut ephemeral_names: Vec<String> = Vec::new();
     let mut presence_names: Vec<String> = Vec::new();
     let mut peers_names: Vec<String> = Vec::new();
+    let mut documents_names: Vec<String> = Vec::new();
+    // `let x = callee(a, b, c)`: the binding, the callee, each argument's text, `let`, where.
+    let mut called: Vec<(usize, String, Vec<String>, bool, u32)> = Vec::new();
     let mut calls: Vec<(usize, String)> = Vec::new();
     // `from` imported from @zubra/runtime, and `let x = from(arg)` bindings: (binding, callee,
     // the argument's text, whether it's a `let`, where it is).
@@ -228,6 +231,24 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                                 &source[init.span().start as usize..init.span().end as usize];
                             if let oxc_ast::ast::Expression::CallExpression(call) = init {
                                 calls.push((script.bindings.len(), text.to_owned()));
+                                if let oxc_ast::ast::Expression::Identifier(callee) = &call.callee {
+                                    if !call.arguments.iter().any(|argument| argument.is_spread()) {
+                                        called.push((
+                                            script.bindings.len(),
+                                            callee.name.to_string(),
+                                            call.arguments
+                                                .iter()
+                                                .map(|argument| {
+                                                    let span = argument.span();
+                                                    source[span.start as usize..span.end as usize]
+                                                        .to_owned()
+                                                })
+                                                .collect(),
+                                            mutable,
+                                            call.span.start,
+                                        ));
+                                    }
+                                }
                                 if let (
                                     oxc_ast::ast::Expression::Identifier(callee),
                                     [argument] | [_, argument],
@@ -309,6 +330,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             match named.imported.name().as_str() {
                                 "presence" => presence_names.push(named.local.name.to_string()),
                                 "peers" => peers_names.push(named.local.name.to_string()),
+                                "documents" => documents_names.push(named.local.name.to_string()),
                                 _ => {}
                             }
                         }
@@ -763,6 +785,29 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         }
         binding.init = expression::parse("[]").ok();
         script.peers = Some(binding.name.clone());
+    }
+    // `let orders = documents('orders', prefix, start)`: a collection's documents as a list. It
+    // isn't a field of this component's own document, and on the server it's `start` (or empty).
+    for (index, callee, arguments, mutable, offset) in called {
+        if !documents_names.contains(&callee) {
+            continue;
+        }
+        if !mutable {
+            return Err(Diagnostic::new(
+                crate::codes::DOCUMENTS_NEEDS_LET,
+                at(offset),
+                format!(
+                    "`{callee}()` is a list that changes as documents do; declare it with `let`"
+                ),
+            )
+            .with_help(format!(
+                "`let {} = {callee}(…)`: a `const` would be read once",
+                script.bindings[index].name
+            )));
+        }
+        let binding = &mut script.bindings[index];
+        binding.init = expression::parse(arguments.get(2).map_or("[]", String::as_str)).ok();
+        script.ephemeral.push(binding.name.clone());
     }
     // `let x = from(prop)` starts as `prop`, so on the server it's the argument's value.
     for (index, callee, argument, mutable, offset) in linked {

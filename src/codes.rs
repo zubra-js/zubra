@@ -161,6 +161,7 @@ codes! {
     SCRIPT_DIRECTIVE_CONFLICT = "ZB3203", "A component with more than one route, layout or collection.";
     COLLECTION_FORM = "ZB3204", "A `'use collection'` without a valid name or `by` list.";
     COLLECTION_KEY_NOT_PROP = "ZB3205", "A collection keyed by a prop the host doesn't declare.";
+    DOCUMENTS_NEEDS_LET = "ZB3206", "A `documents()` list declared with `const` instead of `let`.";
     // Types and props: ZB4000-ZB4999
     INVALID_JSON = "ZB4001", "Props or slots given (`--props`, `--slots`) that aren't valid JSON.";
     PROPS_NOT_OBJECT = "ZB4002", "Props given that aren't a JSON object.";

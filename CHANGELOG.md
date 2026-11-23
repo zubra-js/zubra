@@ -4,9 +4,13 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **`documents()` in `@zubra/sync`: a component can follow a collection, or a key prefix of one** (#432). A `'use collection'` component follows one document, so a staff board never heard that a new one existed, and Counter's kitchen reloaded itself every 20 seconds. `let orders = documents('orders', () => \`${board}/\`, ordersNow)` is the documents under that prefix as a list of `{ key, ...fields }`, sorted by key and kept current: a new document is a new item, whoever wrote it, and a changed field is that item's. The third argument is the list the server renders, shown until the device's store has been read. The list is read-only, needs `let` (`ZB3206`), works with or without `'use collection'`, and is never a field of the component's own document. `indexedDBStore()` and `memoryStore()` gain `all(collection, prefix)`; a store of your own without it gets a list that starts with what it was given and says so once. `@zubra/sync`'s main module is 0.8 KB larger compressed (3.3 KB).
+
 ### Documentation
 
-- **A list that grows, in `docs/sync.md`.** A component follows one document, so a staff board never heard that a new one existed, and Counter's kitchen reloaded itself every 20 seconds (#432). The section shows the index-document pattern that works with what `@zubra/sync` has: the server keeps the list's keys in one document, the board follows it and renders a card per key, and a new document arrives as data over the live stream. A browser test covers it. A component following a collection or a key prefix directly is still not there.
+- **A list that grows, in `docs/sync.md`**: `documents()`, and the index-document pattern for lists that aren't a key prefix (the server keeps the keys in one document; a board follows it and renders a card per key). Browser tests cover both.
 
 ## 6.0.4 — 2026-11-22
 

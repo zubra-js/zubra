@@ -128,6 +128,14 @@ before(async () => {
     if (url.pathname === '/scoped') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000, scope: JSON.parse(url.searchParams.get('scope')) }));
     // Following (read-only): ?poll for polling only, ?scope= as /scoped; live otherwise.
     if (url.pathname === '/following') return res.end(page(`<task-item doc="${doc}"></task-item>`, { follow: url.searchParams.has('poll') ? { interval: 100, live: false } : { interval: 60_000, ...(url.searchParams.has('scope') ? { scope: JSON.parse(url.searchParams.get('scope')) } : {}) } }));
+    // documents(): a list of every order under a prefix. ?start= is the list the server rendered
+    // (JSON); ?connect writes too, ?local has no server, otherwise it follows, live only.
+    if (url.pathname === '/orders') {
+      const start = (url.searchParams.get('start') ?? '[]').replace(/'/g, '');
+      const bare = url.searchParams.has('bare') ? `<script type="module">import { configure, memoryStore } from '/sync/index.js'; const { get, set } = memoryStore(); configure({ store: { get, set } });</script>` : '';
+      const body = `${bare}<order-list board="${doc}" orders-now='${start}'></order-list>${url.searchParams.has('card') ? `<script type="module">import '/components/order-card.js';</script><order-card doc="${doc}/${url.searchParams.get('card').replace(/\W/g, '')}"></order-card>` : ''}`;
+      return res.end(page(body, url.searchParams.has('local') ? false : url.searchParams.has('connect') ? { interval: 60_000 } : { follow: { interval: 60_000 } }, 'order-list'));
+    }
     // A board whose server keeps an index document (boards/<doc>): following, live only.
     if (url.pathname === '/kitchen') return res.end(page(`<order-board board="${doc}" open-now='${JSON.stringify((url.searchParams.get('open') ?? '').split(',').filter(Boolean).map((key) => key.replace(/\W/g, '')))}'></order-board>`, { follow: { interval: 60_000 } }, 'order-board'));
     res.end(page('<task-item doc="a"></task-item>'));
@@ -1091,5 +1099,98 @@ test('an index document: a board follows the keys the server keeps, and a new do
   await sync.write('boards', 'k1', { open: ['k1b'] });
   await shows(['Bread:new']);
   assert.equal(asked.filter((request) => request === 'GET /kitchen').length, pages, 'the page was not fetched again');
+  await context.close();
+});
+
+const rows = (tab) => tab.locator('order-list .order').evaluateAll((all) => all.map((row) => row.textContent));
+const lists = async (tab, expected) => {
+  for (let waited = 0; waited < 5000; waited += 50) {
+    if (JSON.stringify(await rows(tab)) === JSON.stringify(expected)) return;
+    await tab.waitForTimeout(50);
+  }
+  assert.deepEqual(await rows(tab), expected);
+};
+
+test('documents(): a list of a collection under a prefix; a new document is a new row, as data', { skip: viaBinary && 'the JavaScript server only' }, async () => {
+  await sync.write('orders', 'd1/b', { item: 'Soup', status: 'new' });
+  await sync.write('orders', 'd1/a', { item: 'Tea', status: 'served' });
+  await sync.write('orders', 'd1x/a', { item: 'Elsewhere', status: 'new' });
+  const start = encodeURIComponent(JSON.stringify([{ key: 'd1/b', item: 'Soup', status: 'new' }]));
+  const live = await browser.newContext();
+  const tab = await live.newPage();
+  const asked = [];
+  tab.on('request', (request) => asked.push(`${request.method()} ${new URL(request.url()).pathname}`));
+  await tab.goto(`${base}/orders?doc=d1&start=${start}`);
+  await lists(tab, ['Soup:new']);
+  // What the store has joins what the page was given: the served order is counted, not shown,
+  // and another prefix's isn't there at all.
+  for (let waited = 0; (await tab.textContent('.count')) !== '2' && waited < 5000; waited += 50) await tab.waitForTimeout(50);
+  assert.equal(await tab.textContent('.count'), '2');
+  for (let waited = 0; !asked.includes('GET /_zb/sync/live') && waited < 5000; waited += 50) await tab.waitForTimeout(50);
+
+  // A new document: a new row, in key order, over the stream (polling is a minute away).
+  await sync.write('orders', 'd1/ab', { item: 'Bread', status: 'new' });
+  await lists(tab, ['Bread:new', 'Soup:new']);
+  // A field changing is that row's; a derived list follows (served orders leave, and come back).
+  await sync.write('orders', 'd1/b', { status: 'ready' });
+  await lists(tab, ['Bread:new', 'Soup:ready']);
+  await sync.write('orders', 'd1/ab', { status: 'served' });
+  await lists(tab, ['Soup:ready']);
+  await sync.write('orders', 'd1/a', { status: 'new' });
+  await lists(tab, ['Tea:new', 'Soup:ready']);
+  await sync.write('orders', 'd1x/b', { item: 'Elsewhere too', status: 'new' });
+  await sync.write('orders', 'd1/c', { item: 'Last', status: 'new' });
+  await lists(tab, ['Tea:new', 'Soup:ready', 'Last:new']);
+  assert.equal(await tab.textContent('.count'), '4');
+  assert.equal(asked.filter((request) => request === 'GET /orders').length, 1, 'the page was not fetched again');
+
+  // The store's all() is the prefix's documents only, by key.
+  assert.deepEqual(
+    await tab.evaluate(() => import('/sync/index.js').then(({ indexedDBStore }) => indexedDBStore().all('orders', 'd1/')).then((all) => all.map(([key, doc]) => `${key}=${doc.item}`))),
+    ['d1/a=Tea', 'd1/ab=Bread', 'd1/b=Soup', 'd1/c=Last'],
+  );
+  // Another board is another list.
+  await tab.evaluate(() => (document.querySelector('order-list').board = 'd1x'));
+  await lists(tab, ['Elsewhere:new', 'Elsewhere too:new']);
+  // A reload with nothing given: the list is the store's.
+  await tab.goto(`${base}/orders?doc=d1`);
+  await lists(tab, ['Tea:new', 'Soup:ready', 'Last:new']);
+  await live.close();
+});
+
+test('documents(): with no server, a list follows the components on the page and in other tabs, and the store after a reload', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/orders?doc=d2&local`);
+  await tab.waitForFunction(() => customElements.get('order-list'));
+  await lists(tab, []);
+  // A change from anywhere on the page (what a connection, or a component's save, delivers).
+  await tab.evaluate(() => import('/sync/index.js').then(({ receive }) => receive('orders', 'd2/1', { item: 'Pie', status: 'new' })));
+  await lists(tab, ['Pie:new']);
+  const second = await context.newPage();
+  await second.goto(`${base}/orders?doc=d2&local`);
+  await lists(second, ['Pie:new']); // from IndexedDB
+  await second.evaluate(() => import('/sync/index.js').then(({ receive }) => receive('orders', 'd2/2', { item: 'Roll', status: 'new' })));
+  await lists(tab, ['Pie:new', 'Roll:new']); // from the other tab
+  // A component's own edit, on the same page.
+  await second.goto(`${base}/orders?doc=d2&local&card=1`);
+  await lists(second, ['Pie:new', 'Roll:new']);
+  await second.click('order-card .ready');
+  await lists(second, ['Pie:ready', 'Roll:new']);
+  await lists(tab, ['Pie:ready', 'Roll:new']);
+  await context.close();
+});
+
+test('documents(): a store without all() says so once, and the list still hears changes', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  const errors = [];
+  tab.on('console', (message) => message.type() === 'error' && errors.push(message.text()));
+  await tab.goto(`${base}/orders?doc=d3&local&bare&start=${encodeURIComponent(JSON.stringify([{ key: 'd3/1', item: 'Given', status: 'new' }]))}`);
+  await lists(tab, ['Given:new']);
+  await tab.evaluate(() => import('/sync/index.js').then(({ receive }) => receive('orders', 'd3/2', { item: 'Heard', status: 'new' })));
+  await lists(tab, ['Given:new', 'Heard:new']);
+  assert.equal(errors.length, 1, errors.join('\n'));
+  assert.match(errors[0], /this store has no all\(collection, prefix\), so documents\("orders"\)/);
   await context.close();
 });
