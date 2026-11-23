@@ -128,6 +128,113 @@ fn peers_is_once_per_component() {
     );
 }
 
+const ORDERS: &str = r#"<script>
+  import { documents } from '@zubra/sync';
+  let orders = documents('orders', () => `${board}/`, ordersNow);
+  const open = orders.filter((order) => order.status !== 'served');
+</script>
+<order-list board="" orders-now={[]}><zb-each items={open} as="order" key={order.key}><p>{order.item}</p></zb-each> {orders.length}</order-list>"#;
+
+#[test]
+fn documents_is_state_the_server_renders_from_its_starting_list() {
+    let js = compile_js(ORDERS, "@zubra/runtime", "order-list.zb").unwrap();
+    assert!(
+        js.contains("documents('orders', () => `${$p.board}/`, $p.ordersNow)"),
+        "{js}"
+    );
+    // No 'use collection': the list alone doesn't make the component a document.
+    assert!(!js.contains("$collection"), "{js}");
+    let html = compile(
+        ORDERS,
+        r#"{"board":"k","ordersNow":[{"key":"k/1","item":"Soup","status":"new"},{"key":"k/2","item":"Tea","status":"served"}]}"#,
+    )
+    .unwrap();
+    assert!(
+        html.contains("<p>Soup</p>") && !html.contains("Tea</p>"),
+        "{html}"
+    );
+    assert!(html.contains(" 2</order-list>"), "{html}");
+    // Without a starting list, the server's is empty.
+    let bare = compile(
+        "<script>import { documents } from '@zubra/sync'; let orders = documents('orders');</script>\n<x-y>{orders.length}</x-y>",
+        "{}",
+    )
+    .unwrap();
+    assert!(bare.contains(">0</x-y>"), "{bare}");
+}
+
+#[test]
+fn documents_is_not_a_field_of_the_components_own_document() {
+    let js = compile_js(
+        "<script>'use collection boards'; import { documents } from '@zubra/sync'; let note = ''; let orders = documents('orders');</script>\n<x-y doc=\"\">{note}{orders.length}</x-y>",
+        "@zubra/runtime",
+        "x-y.zb",
+    )
+    .unwrap();
+    assert!(
+        js.contains(r#"$collection("boards", ["doc"], $p, { note });"#),
+        "{js}"
+    );
+}
+
+#[test]
+fn documents_needs_let() {
+    let error = compile(
+        "<script>import { documents } from '@zubra/sync'; const orders = documents('orders');</script>\n<x-y>{orders.length}</x-y>",
+        "{}",
+    )
+    .unwrap_err();
+    assert_eq!(error.code, zubra::codes::DOCUMENTS_NEEDS_LET);
+    assert!(
+        error.message.contains("declare it with `let`"),
+        "{}",
+        error.message
+    );
+    // Another package's `documents` is not this one.
+    compile_js(
+        "<script>import { documents } from './mine.js'; const orders = documents('orders');</script>\n<x-y>{orders.length}</x-y>",
+        "@zubra/runtime",
+        "x-y.zb",
+    )
+    .unwrap();
+}
+
+/// Security audit of #433: a form the compiler didn't recognise made the list a stored field of
+/// a 'use collection' component, so every listed document was copied into its own and pushed.
+#[test]
+fn documents_any_other_way_is_never_a_stored_field() {
+    let board = |script: &str| {
+        compile_js(
+            &format!("<script>'use collection boards by board';\n{script}\nlet title = '';</script>\n<x-y board=\"\" orders-now={{[]}}>{{title}}{{orders.length}}</x-y>"),
+            "@zubra/runtime",
+            "x-y.zb",
+        )
+    };
+    // Still the list: parentheses, an alias, a spread.
+    for script in [
+        "import { documents } from '@zubra/sync'; let orders = (documents('orders', '', ordersNow));",
+        "import { documents as d } from '@zubra/sync'; let orders = d('orders');",
+        "import { documents } from '@zubra/sync'; const args = ['orders']; let orders = documents(...args);",
+    ] {
+        let js = board(script).unwrap();
+        assert!(
+            js.contains(r#"$collection("boards", ["board"], $p, { title });"#),
+            "{script}\n{js}"
+        );
+    }
+    // Refused: the compiler can't tell these from state.
+    for script in [
+        "import { documents } from '@zubra/sync'; let orders = documents('orders') ?? [];",
+        "import * as sync from '@zubra/sync'; let orders = sync.documents('orders');",
+        "import { documents } from '@zubra/sync'; const list = documents; let orders = list('orders');",
+        "import { documents } from '@zubra/sync'; let orders = []; function load() { orders = documents('orders'); }",
+        "import { documents } from '@zubra/sync'; const orders = (documents('orders'));",
+    ] {
+        let error = board(script).unwrap_err();
+        assert_eq!(error.code, zubra::codes::DOCUMENTS_NEEDS_LET, "{script}");
+    }
+}
+
 #[test]
 fn a_plain_element_says_it_cant_keep_a_collection() {
     let error =

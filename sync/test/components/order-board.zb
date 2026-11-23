@@ -1,0 +1,19 @@
+<!-- The index-document pattern of docs/sync.md ("A list that grows"): the server keeps the open
+     orders' keys in boards/<board>, and each key is a card following its own document. -->
+<script>
+  'use collection boards by board';
+  import { from, watch } from '@zubra/runtime';
+  import { ephemeral } from '@zubra/sync';
+  import './order-card.js';
+
+  let open = from(openNow);       // the keys the server rendered, then the document's
+  let rev = 0;                    // a counter the server adds one to
+  let told = ephemeral(0);
+  watch(() => rev, () => (told = told + 1));
+</script>
+<order-board board="" open-now={[]}>
+  <zb-each items={open} as="order" key={order}>
+    <order-card doc={order}></order-card>
+  </zb-each>
+  <u class="told">{told}</u>
+</order-board>

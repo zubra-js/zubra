@@ -1,0 +1,10 @@
+<script>
+  'use collection orders';
+
+  let item = '';
+  let status = 'new';
+</script>
+<order-card doc="">
+  <b class="item">{item}</b> <i class="status">{status}</i>
+  <button class="ready" onclick={() => (status = 'ready')}>Ready</button>
+</order-card>

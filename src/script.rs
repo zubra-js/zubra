@@ -190,6 +190,12 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     let mut ephemeral_names: Vec<String> = Vec::new();
     let mut presence_names: Vec<String> = Vec::new();
     let mut peers_names: Vec<String> = Vec::new();
+    let mut documents_names: Vec<String> = Vec::new();
+    // `let x = callee(a, b, c)`: the binding, the callee, each argument's text, `let`, where the
+    // call and its callee start.
+    let mut called: Vec<(usize, String, Vec<String>, bool, u32, u32)> = Vec::new();
+    // `import * as sync from '@zubra/sync'`.
+    let mut sync_namespaces: Vec<String> = Vec::new();
     let mut calls: Vec<(usize, String)> = Vec::new();
     // `from` imported from @zubra/runtime, and `let x = from(arg)` bindings: (binding, callee,
     // the argument's text, whether it's a `let`, where it is).
@@ -251,6 +257,29 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                                     }
                                 }
                             }
+                            // The call itself, through parentheses and TypeScript's wrappers:
+                            // `let orders = (documents(…))` is still that list.
+                            if let oxc_ast::ast::Expression::CallExpression(call) =
+                                init.get_inner_expression()
+                            {
+                                if let oxc_ast::ast::Expression::Identifier(callee) = &call.callee {
+                                    called.push((
+                                        script.bindings.len(),
+                                        callee.name.to_string(),
+                                        call.arguments
+                                            .iter()
+                                            .map(|argument| {
+                                                let span = argument.span();
+                                                source[span.start as usize..span.end as usize]
+                                                    .to_owned()
+                                            })
+                                            .collect(),
+                                        mutable,
+                                        call.span.start,
+                                        callee.span.start,
+                                    ));
+                                }
+                            }
                             script.bindings.push(Binding {
                                 name: identifier.name.to_string(),
                                 init: expression::parse(text).ok(),
@@ -294,6 +323,13 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             Statement::ImportDeclaration(import) => {
                 for specifier in import.specifiers.iter().flatten() {
                     script.runtime_names.push(specifier.name().to_string());
+                    if matches!(
+                        specifier,
+                        ImportDeclarationSpecifier::ImportNamespaceSpecifier(_)
+                    ) && import.source.value.as_str() == Some(SYNC)
+                    {
+                        sync_namespaces.push(specifier.name().to_string());
+                    }
                     if let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier {
                         if import.source.value.as_str() == Some(RUNTIME)
                             && named.imported.name().as_str() == "emit"
@@ -309,6 +345,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             match named.imported.name().as_str() {
                                 "presence" => presence_names.push(named.local.name.to_string()),
                                 "peers" => peers_names.push(named.local.name.to_string()),
+                                "documents" => documents_names.push(named.local.name.to_string()),
                                 _ => {}
                             }
                         }
@@ -764,6 +801,52 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         binding.init = expression::parse("[]").ok();
         script.peers = Some(binding.name.clone());
     }
+    // `let orders = documents('orders', prefix, start)`: a collection's documents as a list. It
+    // isn't a field of this component's own document, and on the server it's `start` (or empty).
+    let mut lists: Vec<u32> = Vec::new();
+    for (index, callee, arguments, mutable, offset, callee_offset) in called {
+        if !documents_names.contains(&callee) {
+            continue;
+        }
+        if !mutable {
+            return Err(Diagnostic::new(
+                crate::codes::DOCUMENTS_NEEDS_LET,
+                at(offset),
+                format!(
+                    "`{callee}()` is a list that changes as documents do; declare it with `let`"
+                ),
+            )
+            .with_help(format!(
+                "`let {} = {callee}(…)`: a `const` would be read once",
+                script.bindings[index].name
+            )));
+        }
+        let binding = &mut script.bindings[index];
+        binding.init = expression::parse(arguments.get(2).map_or("[]", String::as_str)).ok();
+        script.ephemeral.push(binding.name.clone());
+        lists.push(callee_offset);
+    }
+    // Anywhere else, the compiler can't tell the list from state: in a 'use collection' component
+    // it would be stored as a field, every listed document copied into this one and pushed.
+    if !documents_names.is_empty() || !sync_namespaces.is_empty() {
+        let mut finder = DocumentsFinder {
+            names: &documents_names,
+            namespaces: &sync_namespaces,
+            lists: &lists,
+            found: None,
+        };
+        finder.visit_program(&parsed.program);
+        if let Some((offset, name)) = finder.found {
+            return Err(Diagnostic::new(
+                crate::codes::DOCUMENTS_NEEDS_LET,
+                at(offset),
+                format!("`{name}()` must be the whole value of a top-level `let`"),
+            )
+            .with_help(format!(
+                "write `let orders = documents(…)` on its own, with `documents` imported by name from '@zubra/sync', and derive from `orders` with a `const` (`{name}` was used another way)"
+            )));
+        }
+    }
     // `let x = from(prop)` starts as `prop`, so on the server it's the argument's value.
     for (index, callee, argument, mutable, offset) in linked {
         if !from_names.contains(&callee) {
@@ -812,6 +895,47 @@ pub fn template_emits(source: &str, emit: &str, span: Span) -> Result<Vec<Emit>,
 pub const RUNTIME: &str = "@zubra/runtime";
 /// The package that keeps `'use collection'` components' state.
 pub const SYNC: &str = "@zubra/sync";
+
+/// Finds a use of `@zubra/sync`'s `documents` that isn't one of the recognised lists.
+struct DocumentsFinder<'s> {
+    names: &'s [String],
+    namespaces: &'s [String],
+    /// Where each recognised `let x = documents(…)`'s callee starts.
+    lists: &'s [u32],
+    found: Option<(u32, String)>,
+}
+
+impl<'a> Visit<'a> for DocumentsFinder<'_> {
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        if self.found.is_none()
+            && self
+                .names
+                .iter()
+                .any(|name| name == identifier.name.as_str())
+            && !self.lists.contains(&identifier.span.start)
+        {
+            self.found = Some((identifier.span.start, identifier.name.to_string()));
+        }
+    }
+
+    fn visit_static_member_expression(
+        &mut self,
+        member: &oxc_ast::ast::StaticMemberExpression<'a>,
+    ) {
+        if let Expression::Identifier(object) = &member.object {
+            if self.found.is_none()
+                && member.property.name.as_str() == "documents"
+                && self
+                    .namespaces
+                    .iter()
+                    .any(|name| name == object.name.as_str())
+            {
+                self.found = Some((member.span.start, format!("{}.documents", object.name)));
+            }
+        }
+        walk::walk_static_member_expression(self, member);
+    }
+}
 
 /// Finds `emit("name", detail)` calls; `emit` used any other way can't be analyzed.
 struct EmitFinder<'s, F: Fn(u32) -> Span> {

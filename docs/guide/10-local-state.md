@@ -53,7 +53,7 @@ const sync = createSyncServer({
 if (await sync.handle(req, res)) return;
 ```
 
-The component doesn't change. Writes still land on the device first, go out when the network allows, and merge field by field: the later write wins, on every device alike. `presence()` and `peers()` add who else is looking at the same document.
+The component doesn't change. Writes still land on the device first, go out when the network allows, and merge field by field: the later write wins, on every device alike. `presence()` and `peers()` add who else is looking at the same document. And a page that must show documents it wasn't rendered with (a kitchen's new orders) lists them: `let orders = documents('orders', 'kitchen/')` is every document under that key prefix, and grows as they're written ([A list that grows](../sync.md#a-list-that-grows)).
 
 [`examples/standup`](../../examples/standup/) is a whole app built this way, with a SQLite log, offline edits and presence. The [sync page](../sync.md) has the protocol, `authorize`, the stores, and the `zubra-sync` binary for servers without Node.
 

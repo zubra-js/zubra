@@ -1,0 +1,13 @@
+<!-- `documents()`: every order under the board's prefix, as a list (docs/sync.md, "A list that grows"). -->
+<script>
+  import { documents } from '@zubra/sync';
+
+  let orders = documents('orders', () => `${board}/`, ordersNow);
+  const open = orders.filter((order) => order.status !== 'served');
+</script>
+<order-list board="" orders-now={[]}>
+  <zb-each items={open} as="order" key={order.key}>
+    <p class="order" data-key={order.key}>{order.item}:{order.status}</p>
+  </zb-each>
+  <u class="count">{orders.length}</u>
+</order-list>

@@ -7,10 +7,24 @@ export function presence<T>(value: T): T;
 /** `let others = peers()`: the document's other viewers, each `{ peer, ...presence }`. */
 export function peers<T extends object = Record<string, unknown>>(): Array<T & { peer: string }>;
 
+/**
+ * `let orders = documents('orders', 'kitchen/')`: a collection's documents as a list, each
+ * `{ key, ...fields }`, sorted by key and kept current. `prefix` keeps the documents whose key
+ * starts with it (a function is followed), and `start` is the list until the store is read: what
+ * the server rendered. Read-only: edits go through a `'use collection'` component or the server.
+ */
+export function documents<T extends object = Record<string, unknown>>(
+  collection: string,
+  prefix?: string | (() => string),
+  start?: ReadonlyArray<T & { key: string }>,
+): Array<T & { key: string }>;
+
 /** Where documents live. `set` merges `fields` into the stored document. */
 export interface Store {
   get(collection: string, key: string): Promise<Record<string, unknown> | undefined>;
   set(collection: string, key: string, fields: Record<string, unknown>): Promise<void>;
+  /** For `documents()`: each stored document of `collection` whose key starts with `prefix`, as `[key, fields]`, by key. */
+  all?(collection: string, prefix?: string): Promise<Array<[string, Record<string, unknown>]>>;
 }
 
 /** Use another store, before any `'use collection'` element starts. */

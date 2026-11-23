@@ -16,7 +16,8 @@
 // - other elements showing the same document, in this tab or another (BroadcastChannel), follow.
 //
 // Tier 0 of plan/sync-design.md: one device, no server. Merging is last-writer-wins per field.
-import { effect, onUnmount, Signal } from '@zubra/runtime';
+import { effect, onUnmount, raw, Signal, state } from '@zubra/runtime';
+import { refusedField } from './fields.js';
 
 /** `let editing = ephemeral(false)`: state the collection doesn't store. */
 export const ephemeral = (value) => value;
@@ -132,8 +133,21 @@ if (typeof addEventListener === 'function') {
     for (const room of [...joined.keys()]) sendPresence(room, null);
   });
 }
+// Every `documents()` list, by collection: told of each change to a document, whoever made it.
+const lists = new Map();
 function deliver(collection, key, fields, from) {
   for (const apply of bound.get(docId(collection, key)) ?? []) if (apply !== from) apply(fields);
+  // A list is told after the document's own elements, and only what a document can be: a key or
+  // fields of another type (a log that isn't Zubra's, another tab's message) stop here, and one
+  // list failing never stops the next, or the change going on to the other tabs.
+  if (typeof key !== 'string' || !fields || typeof fields !== 'object') return;
+  for (const hear of lists.get(collection) ?? []) {
+    try {
+      hear(key, fields);
+    } catch (error) {
+      console.error(`@zubra/sync: a documents() list couldn't take ${collection}/${key}`, error);
+    }
+  }
 }
 
 /** Plain JSON of a state value; reading it all also subscribes to every nested change. */
@@ -237,6 +251,131 @@ export function collection(name, keys, props, fields, presenceFields = null, pee
   if (presenceFields || peersSignal) live(name, keyOf, presenceFields ?? {}, peersSignal);
 }
 
+let warnedAll = false;
+/**
+ * `let orders = documents('orders', 'kitchen/')`: the collection's documents as a list, each
+ * `{ key, ...fields }` (what the server's `documents().all()` gives), sorted by key, and kept
+ * current: a document that appears is a new item, a field that changes is that item's. With a
+ * prefix, only the documents whose key starts with it; a function (`() => \`${board}/\``) is
+ * followed when what it reads changes, and while it gives `null` or `undefined` the list is empty. `start` is the list until the store has been read: what
+ * the server rendered (the compiler renders it there). The list is for reading: an edit goes
+ * through a `'use collection'` component, or the server.
+ */
+export function documents(name, prefix = '', start = []) {
+  // A prefix function that has nothing to give yet (`null`, `undefined`) lists nothing: only
+  // `documents('orders')`, written out, is the whole collection.
+  const read = () => {
+    const now = typeof prefix === 'function' ? prefix() : prefix ?? '';
+    return now === null || now === undefined ? null : String(now);
+  };
+  const entry = (key, fields) => {
+    const doc = { key };
+    for (const [field, value] of Object.entries(fields)) if (!refusedField(field)) doc[field] = snapshot(value);
+    return doc;
+  };
+  const byKey = (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  const given = (Array.isArray(start) ? start : []).filter((doc) => doc && typeof doc === 'object' && typeof doc.key === 'string');
+  // The reactive array a `let` holds: the component's state wraps the same one.
+  const list = state(given.map((doc) => entry(doc.key, doc)).sort(byKey)).get();
+  // Where `key` is, or belongs: a binary search of the array itself (not its proxy, which would
+  // track every item looked at), since the list is always in key order.
+  const find = (key) => {
+    const items = raw(list);
+    let low = 0;
+    let high = items.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (items[middle].key < key) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  const update = (at, fields, skip) => {
+    for (const [field, value] of Object.entries(fields)) {
+      if (!refusedField(field) && !skip?.has(field)) list[at][field] = snapshot(value);
+    }
+  };
+  const put = (key, fields) => {
+    const at = find(key);
+    if (raw(list)[at]?.key === key) update(at, fields);
+    else list.splice(at, 0, entry(key, fields));
+  };
+  // The store's documents, which come in key order: fields into the items already here, and the
+  // new ones merged in one pass (an insert each would move the rest of the list every time).
+  const merge = (stored, changed) => {
+    const added = [];
+    for (const [key, doc] of stored) {
+      if (typeof key !== 'string' || !doc || typeof doc !== 'object' || !key.startsWith(current)) continue;
+      const at = find(key);
+      if (raw(list)[at]?.key === key) update(at, doc, changed.get(key));
+      else added.push(entry(key, doc));
+    }
+    if (!added.length) return;
+    added.sort(byKey);
+    const items = raw(list);
+    const merged = [];
+    let next = 0;
+    for (const item of items) {
+      while (next < added.length && added[next].key < item.key) merged.push(added[next++]);
+      merged.push(item);
+    }
+    while (next < added.length) merged.push(added[next++]);
+    list.splice(0);
+    for (let at = 0; at < merged.length; at += 5000) list.push(...merged.slice(at, at + 5000));
+  };
+
+  let current = null;
+  let heard = null; // while the store is being read: the fields that changed, which are newer than it
+  const hear = (key, fields) =>
+    Signal.subtle.untrack(() => {
+      if (current === null || !key.startsWith(current)) return;
+      if (heard) {
+        if (!heard.has(key)) heard.set(key, new Set());
+        for (const field of Object.keys(fields)) heard.get(key).add(field);
+      }
+      put(key, fields);
+    });
+  if (!lists.has(name)) lists.set(name, new Set());
+  lists.get(name).add(hear);
+  onUnmount(() => {
+    lists.get(name)?.delete(hear);
+    if (lists.get(name)?.size === 0) lists.delete(name);
+  });
+
+  let started = false;
+  effect(() => {
+    const now = read();
+    Signal.subtle.untrack(() => {
+      // Another prefix is another list; the first keeps what the page was given under it.
+      if (started && current !== now) list.splice(0);
+      else if (!started) for (let at = list.length - 1; at >= 0; at--) if (now === null || !list[at].key.startsWith(now)) list.splice(at, 1);
+      started = true;
+      current = now;
+    });
+    heard = null;
+    if (now === null) return;
+    const store = theStore();
+    if (typeof store.all !== 'function') {
+      if (!warnedAll) console.error(`@zubra/sync: this store has no all(collection, prefix), so documents(${JSON.stringify(name)}) starts with what it was given and only hears changes from now on`);
+      warnedAll = true;
+      return;
+    }
+    const changed = (heard = new Map());
+    let cancelled = false;
+    fresh()
+      .then(() => store.all(name, now))
+      .then((stored) => {
+        if (!cancelled) Signal.subtle.untrack(() => merge(stored ?? [], changed));
+      })
+      .catch((error) => console.error(`@zubra/sync: couldn't list ${name}/${now}`, error))
+      .finally(() => {
+        if (heard === changed) heard = null;
+      });
+    return () => (cancelled = true);
+  });
+  return list;
+}
+
 const PRUNE = 30_000; // a peer not heard from for this long has gone (a crash, a closed laptop)
 const HEARTBEAT = 10_000;
 
@@ -321,6 +460,13 @@ export function memoryStore() {
       const id = docId(collection, key);
       docs.set(id, { ...docs.get(id), ...structuredClone(fields) });
     },
+    async all(collection, prefix = '') {
+      const from = docId(collection, prefix);
+      return [...docs]
+        .filter(([id]) => id.startsWith(from))
+        .map(([id, doc]) => [id.slice(collection.length + 1), structuredClone(doc)])
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    },
   };
 }
 
@@ -343,6 +489,8 @@ export function indexedDBStore(database = 'zubra-sync') {
       work(docs, (value) => (result = value));
       transaction.oncomplete = () => resolve(result);
       transaction.onerror = () => reject(transaction.error);
+      // A handler that throws aborts the transaction with neither of those: say so, not nothing.
+      transaction.onabort = () => reject(transaction.error ?? new Error('@zubra/sync: the store\'s transaction was aborted'));
     });
   };
   return {
@@ -355,6 +503,21 @@ export function indexedDBStore(database = 'zubra-sync') {
       run('readwrite', (docs) => {
         const request = docs.get([collection, key]);
         request.onsuccess = () => docs.put({ ...request.result, ...fields }, [collection, key]);
+      }),
+    all: (collection, prefix = '') =>
+      run('readonly', (docs, done) => {
+        const found = [];
+        done(found);
+        // Keys are [collection, key], in order: from the prefix on, until a key without it.
+        const request = docs.openCursor(IDBKeyRange.bound([collection, prefix], [`${collection}\u0000`], false, true));
+        request.onsuccess = () => {
+          const cursor = request.result;
+          // (A key that isn't a string, which only a log that isn't Zubra's could have sent, sorts
+          // after every string: nothing of this prefix follows it.)
+          if (!cursor || typeof cursor.key[1] !== 'string' || !cursor.key[1].startsWith(prefix)) return;
+          found.push([cursor.key[1], cursor.value]);
+          cursor.continue();
+        };
       }),
   };
 }
