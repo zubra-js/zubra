@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Documentation
+
+- **A list that grows, in `docs/sync.md`.** A component follows one document, so a staff board never heard that a new one existed, and Counter's kitchen reloaded itself every 20 seconds (#432). The section shows the index-document pattern that works with what `@zubra/sync` has: the server keeps the list's keys in one document, the board follows it and renders a card per key, and a new document arrives as data over the live stream. A browser test covers it. A component following a collection or a key prefix directly is still not there.
+
 ## 6.0.4 — 2026-11-22
 
 ### Security

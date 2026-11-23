@@ -196,6 +196,45 @@ export async function claim(formData, context) {
 
   On Workers, build it inside the Durable Object's own methods (`await this.documents()`), not in the Worker: the stub's documents are a copy. `sync/test/store.test.js` checks this on each log and inside an object.
 
+### A list that grows
+
+A component follows one document, the one its key props name. So every card on a board is live, but nothing on the page hears that `orders/o-18` now exists: no element was rendered with that key. A component can't follow a collection, or a key prefix of one, yet. What works today is an index document: the server keeps the list's keys in one document, the board follows that, and each key is a card following its own.
+
+```js
+// on the server: the order first, then the board's list of keys
+await sync.write('orders', id, { item, status: 'new' });
+await sync.write('boards', 'kitchen', { open: docs.all('orders').filter((order) => order.status !== 'served').map((order) => order.key) });
+```
+
+```html
+<!-- order-board.zb -->
+<script>
+  'use collection boards by board';
+  import { from } from '@zubra/runtime';
+  import './order-card.js';            // 'use collection orders', keyed by doc
+
+  let open = from(openNow);            // the keys the server rendered, then the document's
+</script>
+
+<order-board board="" open-now={[]}>
+  <zb-each items={open} as="order" key={order}>
+    <order-card doc={order}></order-card>
+  </zb-each>
+</order-board>
+```
+
+```html
+<order-board board="kitchen" open-now='["o-17"]'></order-board>
+```
+
+- **A new card arrives as data.** When the server writes the list, every open board gets it over the live stream and renders a card for the new key; the card loads its own document, which the page already has, since the order was written first. A key the server takes off the list takes its card with it. The page isn't fetched again.
+- **`from(openNow)`** starts the list from what the server rendered, so the cards are in the HTML and the page is complete before JavaScript. A plain `let open = []` works too, and renders an empty board until the document loads.
+- **The list is the server's.** It replaces the whole array each time, and last writer wins per field, so two pages writing it would drop each other's keys. Refuse `kind: 'change'` for the index collection in `authorize`, and move cards with a [server action](actions.md). A page that only shows the board can use `follow()`.
+- **A scoped page needs both collections**: the index document and the cards' (`scope: { boards: 'kitchen', orders: true }`, or a prefix of the orders' keys).
+- **For a board that is the server's HTML**, not components per card, keep a counter in the index document instead (`rev`, one more on every change), follow it with `let rev = 0` and `watch(() => rev, …)`, and fetch the board's HTML when it fires. That tells the page "the list changed" without a timed reload.
+
+`sync/test/browser.test.js` ("an index document") checks the list growing, a card changing, a card leaving and the counter, against a page that is never fetched twice.
+
 ### On Cloudflare Workers: a Durable Object
 
 A Worker has many isolates and no memory they share, so the sync server can't live in one: a change pushed to one isolate would never reach a page listening on another. `@zubra/sync/durable` puts it in a Durable Object instead, one per app, with the log in the object's own SQLite (`durableObjectLog(ctx.storage)`, the table and cursors of `sqliteLog`). The Worker forwards `/_zb/sync/*` to it.

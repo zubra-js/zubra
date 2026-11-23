@@ -128,6 +128,8 @@ before(async () => {
     if (url.pathname === '/scoped') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000, scope: JSON.parse(url.searchParams.get('scope')) }));
     // Following (read-only): ?poll for polling only, ?scope= as /scoped; live otherwise.
     if (url.pathname === '/following') return res.end(page(`<task-item doc="${doc}"></task-item>`, { follow: url.searchParams.has('poll') ? { interval: 100, live: false } : { interval: 60_000, ...(url.searchParams.has('scope') ? { scope: JSON.parse(url.searchParams.get('scope')) } : {}) } }));
+    // A board whose server keeps an index document (boards/<doc>): following, live only.
+    if (url.pathname === '/kitchen') return res.end(page(`<order-board board="${doc}" open-now='${JSON.stringify((url.searchParams.get('open') ?? '').split(',').filter(Boolean).map((key) => key.replace(/\W/g, '')))}'></order-board>`, { follow: { interval: 60_000 } }, 'order-board'));
     res.end(page('<task-item doc="a"></task-item>'));
   });
   await new Promise((done) => server.listen(0, done));
@@ -1052,4 +1054,42 @@ test('follow: an older change never replaces a newer one, and stop() ends it', a
   await tab.waitForTimeout(500);
   assert.equal(await tab.inputValue('.title'), 'Second');
   await Promise.all([context.close(), one.close(), two.close(), three.close()]);
+});
+
+test('an index document: a board follows the keys the server keeps, and a new document arrives as a card', { skip: viaBinary && 'the JavaScript server only' }, async () => {
+  // The server's side: the order first, then the board's list of keys (docs/sync.md, "A list that grows").
+  const place = async (board, key, fields, open) => {
+    await sync.write('orders', key, fields);
+    await sync.write('boards', board, { open, rev: Date.now() });
+  };
+  await place('k1', 'k1a', { item: 'Soup', status: 'new' }, ['k1a']);
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  const asked = [];
+  tab.on('request', (request) => asked.push(`${request.method()} ${new URL(request.url()).pathname}`));
+  await tab.goto(`${base}/kitchen?doc=k1&open=k1a`);
+  const cards = () => tab.locator('order-card').evaluateAll((all) => all.map((card) => `${card.querySelector('.item').textContent}:${card.querySelector('.status').textContent}`));
+  const shows = async (expected) => {
+    for (let waited = 0; waited < 5000; waited += 50) {
+      if (JSON.stringify(await cards()) === JSON.stringify(expected)) return;
+      await tab.waitForTimeout(50);
+    }
+    assert.deepEqual(await cards(), expected);
+  };
+  await shows(['Soup:new']);
+  for (let waited = 0; !asked.includes('GET /_zb/sync/live') && waited < 5000; waited += 50) await tab.waitForTimeout(50);
+  const told = Number(await tab.textContent('.told'));
+  const pages = asked.filter((request) => request === 'GET /kitchen').length;
+
+  // A new order: its card arrives as data, over the stream (polling is a minute away).
+  await place('k1', 'k1b', { item: 'Bread', status: 'new' }, ['k1a', 'k1b']);
+  await shows(['Soup:new', 'Bread:new']);
+  assert.ok(Number(await tab.textContent('.told')) > told, 'watch() on a field the server changes is told');
+  // A card already there is live, as ever; one the server takes off the list goes.
+  await sync.write('orders', 'k1a', { status: 'ready' });
+  await shows(['Soup:ready', 'Bread:new']);
+  await sync.write('boards', 'k1', { open: ['k1b'] });
+  await shows(['Bread:new']);
+  assert.equal(asked.filter((request) => request === 'GET /kitchen').length, pages, 'the page was not fetched again');
+  await context.close();
 });

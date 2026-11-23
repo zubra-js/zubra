@@ -41,6 +41,14 @@ test("Sync's presence sample compiles", () => {
   compile(board, 'board-view.zb', '--emit', 'js');
 });
 
+test("Sync's index-document sample compiles, following the list of keys", () => {
+  const page = readFileSync(join(root, 'docs/sync.md'), 'utf8');
+  const [board] = blocksAfter(page, '### A list that grows', 'html');
+  assert.match(board, /<!-- order-board\.zb -->/);
+  const module = compile(board, 'order-board.zb', '--emit', 'js');
+  assert.match(module, /\$collection\("boards", \["board"\], \$p, \{ open \}\)/);
+});
+
 test('blocksAfter finds the blocks after a heading only', () => {
   const page = '# A\n```js\nbefore\n```\n## B\n```js\none\n```\ntext\n```html\nx\n```\n```js\ntwo\n```\n';
   assert.deepEqual(blocksAfter(page, '## B', 'js'), ['one', 'two']);
