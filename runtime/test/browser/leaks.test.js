@@ -221,3 +221,38 @@ test("shadow components made and removed don't leave a reference each behind", {
   assert.ok(refs < 1500, `${refs} WeakRefs after 6000 shadow components came and went`);
   await page.close();
 });
+
+// Security audit of #436: connecting again watches each slotted text node, so a node that left the
+// element while it was detached (moved into the page) used to be watched too. Connected in a
+// document that is then dropped (an iframe removed, an inert document), the element is never
+// disconnected, and the page's text node held it, its context and that document.
+// (With the signals engine, every element connected in a dropped document is kept, whether or not
+// its text moved, on main as well; why isn't known yet. A separate issue, so skipped there.)
+test('an element connected again in a dropped document is not kept by a text node that left it', { skip: skip || (process.env.ZUBRA_ENGINE === 'signals' && 'the signals engine keeps an element connected in a dropped document anyway') }, async () => {
+  const { page } = await open('<div id="box"></div><div id="elsewhere"></div>', { modules: ['card'] });
+  await page.evaluate(() => {
+    const box = document.getElementById('box');
+    const elsewhere = document.getElementById('elsewhere');
+    for (let i = 0; i < 50; i++) {
+      for (const kind of ['iframe', 'inert']) {
+        const card = document.createElement('zb-card');
+        const text = document.createTextNode('');
+        card.append(text);
+        box.append(card);
+        card.remove();
+        elsewhere.append(text); // left the card while it was detached: nothing saw it go
+        if (kind === 'iframe') {
+          const frame = document.createElement('iframe');
+          document.body.append(frame);
+          frame.contentDocument.body.append(card);
+          frame.remove();
+        } else {
+          document.implementation.createHTMLDocument('').body.append(card);
+        }
+      }
+    }
+  });
+  assert.deepEqual(await collected(page, ['zb-card']), { 'zb-card': 0 });
+  assert.equal(await page.evaluate(() => document.getElementById('elsewhere').childNodes.length), 100, 'the text nodes are still in the page');
+  await page.close();
+});

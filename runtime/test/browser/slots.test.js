@@ -570,6 +570,61 @@ test('text a framework writes into a slot after the element was moved still reac
   await page.close();
 });
 
+test('every slotted text node is heard after a move, not only the first', async () => {
+  const { page, messages } = await open('<main></main>', {
+    modules: ['card'],
+    beforeModules: `
+      const card = document.createElement('zb-card');
+      window.first = document.createTextNode('');
+      window.second = document.createTextNode('');
+      card.append(window.first, window.second);
+      document.querySelector('main').append(card);`,
+  });
+  await page.evaluate(async () => {
+    const card = document.querySelector('zb-card');
+    const main = card.parentNode;
+    card.remove();
+    main.append(card);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    window.second.data = 'Hello';
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.equal((await readCard(page)).section, 'Hello');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+// Security audit of #436: what left a slot while its element was detached stayed in the slot's
+// list, so connecting again put it back: an element took a node another component now holds.
+test("an element connected again doesn't take back a node that left it while it was detached", async () => {
+  const { page, messages } = await open('<main><zb-card id="a"></zb-card><zb-card id="b"><p>B body</p></zb-card></main>', {
+    beforeModules: "window.moved = document.createTextNode('A text'); document.getElementById('a').append(window.moved);",
+    modules: ['card'],
+  });
+  const where = () => page.evaluate(() => ({
+    moved: window.moved.parentNode?.closest?.('zb-card')?.id ?? null,
+    a: document.querySelector('#a section').textContent.trim(),
+  }));
+  assert.deepEqual(await where(), { moved: 'a', a: 'A text' });
+  await page.evaluate(async () => {
+    const a = document.getElementById('a');
+    const b = document.getElementById('b');
+    const main = a.parentNode;
+    a.remove();
+    b.append(window.moved); // B's now, while A was detached
+    main.prepend(a);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    a.open = false;
+    await a.updateComplete;
+    a.open = true;
+    await a.updateComplete;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  assert.deepEqual(await where(), { moved: 'b', a: 'No content' });
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test('server markup that lost its markers is told from page content by data-zb-filled on the host', { skip: runtimeOnly }, async () => {
   // The server writes data-zb-filled on a light-DOM host that has slots, naming the ones it
   // filled: that host's marker-less children are its own markup, and hydrate in place.
