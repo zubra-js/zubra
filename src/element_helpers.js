@@ -866,6 +866,10 @@ function @dropStandIn(node) {
   // unseen: drop it, then watch what's still here.
   #rejoin() {
     for (const record of this.#slots.values()) this.#show(record);
+    // A slot attribute changed meanwhile went unseen too: what's still here goes where it says.
+    for (const record of [...this.#slots.values()]) {
+      for (const node of [...record.nodes]) if (@isContent(node) && @slotName(node, this) !== record.name) this.#reslot(node);
+    }
     this.#listen();
   }
 

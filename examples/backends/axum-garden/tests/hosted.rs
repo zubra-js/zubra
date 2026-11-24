@@ -263,3 +263,19 @@ async fn the_data_goes_back_to_its_seed_at_midnight_utc() {
     .await
     .unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_visitor_cannot_reset_everyone_elses_edits() {
+    // The tests' /reset would let one visitor wipe the others' work: the demo resets on its own.
+    let garden = Garden::new(|_| {}).await;
+    tokio::task::spawn_blocking(move || {
+        let (status, _, _) = post(&format!("{}/plots/A2", garden.base), &sign_up("Ada"), None);
+        assert_eq!(status, 303);
+        assert_ne!(garden.status("A2"), "open");
+        let (status, _, _) = post(&format!("{}/reset", garden.base), &[], None);
+        assert_eq!(status, 404);
+        assert_ne!(garden.status("A2"), "open", "the edit is still there");
+    })
+    .await
+    .unwrap();
+}

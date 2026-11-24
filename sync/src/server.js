@@ -279,7 +279,8 @@ export function allowReads(collections) {
  */
 function hostAllowed(hostname, allowed) {
   const name = hostname.replace(/\.$/, '').toLowerCase();
-  if (name.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
+  if (!name) return false;
+  if ((name.startsWith('[') && name.endsWith(']')) || /^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
   if (name === 'localhost' || name.endsWith('.localhost')) return true;
   return allowed.some((entry) => (entry.startsWith('.') ? name === entry.slice(1) || name.endsWith(entry) : name === entry));
 }
@@ -571,8 +572,19 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     const url = new URL(request.url);
     if (!url.pathname.startsWith(`${base}/`)) return null;
     // Before anything is read or written, and with no CORS: a name this server doesn't answer to.
-    if (hosts && !hostAllowed(url.hostname, hosts)) {
-      return json(403, { error: `This sync server doesn't answer to the host ${JSON.stringify(url.hostname)} (a protection against DNS rebinding): pass createSyncServer({ allowedHosts: [${JSON.stringify(url.hostname)}] }) if it's yours` });
+    // Both the URL's and the Host header's, when there is one: a framework may build the URL from
+    // an origin it was configured with (SvelteKit's ORIGIN), while the browser sent the
+    // rebinding page's name in Host. A Host that isn't a host is refused.
+    if (hosts) {
+      const sent = request.headers.get('host');
+      let named = null;
+      if (sent !== null) {
+        try { named = new URL(`http://${sent}`).hostname; } catch { named = sent; }
+      }
+      const refused = [url.hostname, named].find((name) => name !== null && !hostAllowed(name, hosts));
+      if (refused !== undefined) {
+        return json(403, { error: `This sync server doesn't answer to the host ${JSON.stringify(refused)} (a protection against DNS rebinding): pass createSyncServer({ allowedHosts: [${JSON.stringify(refused)}] }) if it's yours` });
+      }
     }
     const origin = listed(request);
     // A browser asks before it sends JSON from another site (a preflight): only `origins` are told yes.

@@ -18,7 +18,7 @@ const CSS = readFileSync(join(here, '../public/app.css'), 'utf8');
 export function createApp({ store, cache = true, hosted = null }) {
   // @zubra/server: renders components, and serves their modules and @zubra/runtime under /_zubra.
   const middleware = zubraMiddleware({ components: join(here, '../components'), cache });
-  const shop = createShop({ store, middleware, htmx: HTMX, css: CSS, notice: hosted ? NOTICE : null });
+  const shop = createShop({ store, middleware, htmx: HTMX, css: CSS, notice: hosted ? NOTICE : null, hosted: Boolean(hosted) });
   if (!hosted) return shop;
   const app = new Hono();
   app.use(...guard({ reset: store.reset, ...hosted }));

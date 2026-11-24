@@ -37,6 +37,17 @@ test('with allowAnyone, a server answers only to addresses, localhost and names 
   assert.equal((await (await sync.fetch(new Request('http://localhost/_zb/sync/pull?since=0'))).json()).changes.length, 0);
 });
 
+test('the Host header is checked too, when the framework built the URL from an origin of its own', async () => {
+  const sync = createSyncServer({ authorize: allowAnyone });
+  const from = (host) => sync.fetch(new Request('http://localhost:3000/_zb/sync/pull?since=0', { headers: host === undefined ? {} : { host } })).then((response) => response.status);
+  assert.equal(await from(undefined), 200, 'no Host header: the URL decides');
+  assert.equal(await from('localhost:3000'), 200);
+  assert.equal(await from('rebind.evil.example:3000'), 403);
+  assert.equal(await from('[evil.example'), 403, 'a Host that is not a host');
+  const refused = await (await sync.fetch(new Request('http://localhost:3000/_zb/sync/pull?since=0', { headers: { host: 'rebind.evil.example' } }))).json();
+  assert.match(refused.error, /"rebind\.evil\.example"/);
+});
+
 test('the check is on by default where anyone may read, and off for an app\'s own authorize unless it lists names', async () => {
   assert.equal(await pull(createSyncServer({ authorize: allowAnyone }), 'evil.example'), 403);
   assert.equal(await pull(createSyncServer({ authorize: allowReads() }), 'evil.example'), 403);

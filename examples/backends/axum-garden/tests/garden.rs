@@ -407,8 +407,10 @@ async fn the_hosted_pages_match_the_flask_examples() {
             let body = response.body_mut().read_to_string().unwrap_or_default();
             (status, retry, body)
         };
+        // Both start at the seed (CI starts the hosted Flask demo fresh, and nothing here stores
+        // anything), and neither lets a visitor reset it: the demo resets on its own.
         for site in [&flask, &axum] {
-            assert_eq!(send(&format!("{site}/reset"), &[], &visitor(1)).0, 204);
+            assert_eq!(send(&format!("{site}/reset"), &[], &visitor(1)).0, 404);
         }
         for path in ["/", "/plots/A1", "/plots/B1", "/harvest"] {
             let (a, b) = (

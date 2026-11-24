@@ -36,6 +36,14 @@ class Hosted(unittest.TestCase):
             self.assertIn(NOTICE, client.get(path).text, path)
         self.assertNotIn(NOTICE, create_app(store=Store()).test_client().get("/").text)
 
+    def test_a_visitor_cannot_reset_everyone_elses_edits(self):
+        # The tests' /reset would let one visitor wipe the others' work: the demo resets on its own.
+        client = self.garden()
+        self.assertEqual(client.post("/plots/A2", data=sign_up()).status_code, 303)
+        self.assertNotEqual(self.store.plot("A2")["status"], "open")
+        self.assertEqual(client.post("/reset").status_code, 404)
+        self.assertNotEqual(self.store.plot("A2")["status"], "open")
+
     def test_a_large_body_is_refused(self):
         client = self.garden()
         response = client.post("/plots/A2", data=sign_up("x" * 20_000))

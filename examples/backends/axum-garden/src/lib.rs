@@ -90,14 +90,20 @@ pub fn app_with(store: Arc<Mutex<Store>>, hosted: Option<Hosted>) -> Router {
         .route("/", get(home))
         .route("/plots/{id}", get(plot_page).post(sign_up))
         .route("/harvest", get(harvest).post(log_harvest))
-        .route("/reset", post(reset))
         .route(
             "/static/app.css",
             get(|| async { ([(header::CONTENT_TYPE, "text/css")], APP_CSS) }),
         )
         .route("/components/{file}", get(component_module))
-        .route("/vendor/zubra/{*path}", get(runtime_module))
-        .with_state(state);
+        .route("/vendor/zubra/{*path}", get(runtime_module));
+    // For the tests: back to the seed data. Not on a hosted demo, where it would let one visitor
+    // wipe everyone's edits (the demo resets on its own).
+    let router = if hosted.is_none() {
+        router.route("/reset", post(reset))
+    } else {
+        router
+    }
+    .with_state(state);
     match hosted {
         None => router,
         // A larger body is a 413 when a route reads it, after the guard has counted the write.
