@@ -9,7 +9,7 @@ import { durableStorage } from './durable-storage.js';
 let n = 0;
 const at = () => `${String(++n).padStart(15, '0')}-00000-dev1`;
 const change = (collection, key, value) => ({ collection, key, field: 'v', value, clock: at() });
-const url = (path, scope) => `http://shop/_zb/sync${path}${scope === undefined ? '' : `${path.includes('?') ? '&' : '?'}scope=${encodeURIComponent(JSON.stringify(scope))}`}`;
+const url = (path, scope) => `http://localhost/_zb/sync${path}${scope === undefined ? '' : `${path.includes('?') ? '&' : '?'}scope=${encodeURIComponent(JSON.stringify(scope))}`}`;
 const push = (sync, changes, headers = {}) => sync.fetch(new Request(url('/push'), { method: 'POST', body: JSON.stringify({ changes }), headers: { 'content-type': 'application/json', ...headers } }));
 const pull = async (sync, scope, headers = {}) => (await sync.fetch(new Request(url('/pull?since=0', scope), { headers }))).json();
 const join = (sync, room, peer, headers = {}) => sync.fetch(new Request(url('/presence'), { method: 'POST', body: JSON.stringify({ room, peer, state: { here: true } }), headers: { 'content-type': 'application/json', ...headers } }));
@@ -78,12 +78,12 @@ for (const backend of backends) {
   test(`${backend.name}: a scope that isn’t one is refused`, async () => {
   const sync = await backend.start();
   for (const bad of ['[1]', '{"seats":5}', '{"seats":[1]}', 'not json', 'null']) {
-    const response = await sync.fetch(new Request(`http://shop/_zb/sync/pull?since=0&scope=${encodeURIComponent(bad)}`));
+    const response = await sync.fetch(new Request(`http://localhost/_zb/sync/pull?since=0&scope=${encodeURIComponent(bad)}`));
     assert.equal(response.status, bad === 'null' ? 200 : 400, bad);
   }
   const tooLong = '{"a":"' + 'x'.repeat(201) + '"}';
-  assert.equal((await sync.fetch(new Request(`http://shop/_zb/sync/pull?since=0&scope=${encodeURIComponent(tooLong)}`))).status, 400);
-  const live = await sync.fetch(new Request(`http://shop/_zb/sync/live?since=0&peer=p&scope=${encodeURIComponent('[1]')}`));
+  assert.equal((await sync.fetch(new Request(`http://localhost/_zb/sync/pull?since=0&scope=${encodeURIComponent(tooLong)}`))).status, 400);
+  const live = await sync.fetch(new Request(`http://localhost/_zb/sync/live?since=0&peer=p&scope=${encodeURIComponent('[1]')}`));
   assert.equal(live.status, 400, 'the live stream too');
   sync.close();
 });

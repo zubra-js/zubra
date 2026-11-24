@@ -112,7 +112,7 @@ test('behind a proxy that ends TLS, a page on this host writes without Sec-Fetch
 // Security audit of #435: an http page of this host is what a network attacker can write into an
 // https site with no HSTS, and an old browser sends its Origin with the site's cookies.
 test('an https request takes this host by https only; Node ending TLS itself is https', async () => {
-  const sync = createSyncServer({ authorize: allowAnyone });
+  const sync = createSyncServer({ authorize: allowAnyone, allowedHosts: ['app.example'] });
   const push = (url, origin) => sync.fetch(new Request(url, { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ changes: [change('title', origin)] }) })).then((r) => r.status);
   assert.equal(await push('https://app.example/_zb/sync/push', 'https://app.example'), 200);
   assert.equal(await push('https://app.example/_zb/sync/push', 'http://app.example'), 403);

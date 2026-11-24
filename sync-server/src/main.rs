@@ -44,6 +44,71 @@ struct Options {
     open: bool,
     /// What pages may read without `--open`: nothing by default.
     reads: Reads,
+    /// The host names requests may come under (`--allowed-host`), besides those always allowed.
+    hosts: Hosts,
+}
+
+/// The `Host` names the binary answers to. A page on an attacker's domain whose DNS is pointed
+/// at this machine (DNS rebinding) reaches it as the attacker's own site, so the browser lets that
+/// page read the answers; only the `Host` header still names the attacker's domain. So a request
+/// is answered only under a name the binary was told about, or one an attacker can't own: an IP
+/// address, `localhost` or `*.localhost`. `--allowed-host any` turns the check off.
+#[derive(Clone)]
+enum Hosts {
+    Any,
+    /// Lower-case names; one starting with `.` is that name and every name under it.
+    Only(Vec<String>),
+}
+
+/// The name in a `Host` header or an origin's authority, without its port, lower-case, and
+/// without a trailing dot. An IPv6 address keeps its brackets.
+fn host_name(host: &str) -> String {
+    let name = if host.starts_with('[') {
+        host.split_inclusive(']').next().unwrap_or(host)
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    name.trim_end_matches('.').to_ascii_lowercase()
+}
+
+/// The host name of an origin (`https://app.example:8443` → `app.example`).
+fn origin_host(origin: &str) -> Option<String> {
+    let (_, rest) = origin.split_once("://")?;
+    let authority = rest.split('/').next()?;
+    let name = host_name(authority.rsplit('@').next()?);
+    (!name.is_empty()).then_some(name)
+}
+
+/// The names the binary answers to without being told: the one it listens on (`--host`, when
+/// it's a name), and the hosts of the origins it serves (`--origin`).
+fn own_hosts(host: &str, origins: &[String]) -> Vec<String> {
+    std::iter::once(host_name(host))
+        .chain(origins.iter().filter_map(|origin| origin_host(origin)))
+        .collect()
+}
+
+impl Hosts {
+    /// Whether a request with this `Host` header may be answered. No `Host` is not a browser's.
+    fn allows(&self, host: Option<&str>) -> bool {
+        let names = match self {
+            Hosts::Any => return true,
+            Hosts::Only(names) => names,
+        };
+        let Some(host) = host else {
+            return true;
+        };
+        let name = host_name(host);
+        if name.starts_with('[') || name.parse::<std::net::Ipv4Addr>().is_ok() {
+            return true;
+        }
+        if name == "localhost" || name.ends_with(".localhost") {
+            return true;
+        }
+        names.iter().any(|allowed| match allowed.strip_prefix('.') {
+            Some(domain) => name == domain || name.ends_with(&format!(".{domain}")),
+            None => name == *allowed,
+        })
+    }
 }
 
 /// The collections pages may read, as `@zubra/sync/server`'s `authorize`: nothing unless told
@@ -75,6 +140,7 @@ fn options() -> Result<Options, String> {
         keep_alive: Duration::from_secs(15),
         open: false,
         reads: Reads::Nothing,
+        hosts: Hosts::Only(Vec::new()),
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -89,6 +155,15 @@ fn options() -> Result<Options, String> {
                     .map_err(|_| "--port takes a number".to_string())?
             }
             "--origin" => options.origins.push(value("--origin")?),
+            "--allowed-host" => {
+                let name = value("--allowed-host")?;
+                if name.eq_ignore_ascii_case("any") {
+                    options.hosts = Hosts::Any;
+                } else if let Hosts::Only(names) = &mut options.hosts {
+                    let dot = if name.starts_with('.') { "." } else { "" };
+                    names.push(format!("{dot}{}", host_name(name.trim_start_matches('.'))));
+                }
+            }
             "--open" => options.open = true,
             "--read-all" => options.reads = Reads::Everything,
             "--read" => {
@@ -109,7 +184,7 @@ fn options() -> Result<Options, String> {
                 )
             }
             "-h" | "--help" => {
-                println!("usage: zubra-sync [--db sync.db] [--keep-latest] [--host 127.0.0.1] [--port 4000] [--origin https://app.example]... [--keep-alive 15000] [--read <collection>]... [--read-all] [--open]");
+                println!("usage: zubra-sync [--db sync.db] [--keep-latest] [--host 127.0.0.1] [--port 4000] [--origin https://app.example]... [--allowed-host app.example]... [--keep-alive 15000] [--read <collection>]... [--read-all] [--open]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument {other} (try --help)")),
@@ -117,6 +192,9 @@ fn options() -> Result<Options, String> {
     }
     if options.open {
         options.reads = Reads::Everything;
+    }
+    if let Hosts::Only(names) = &mut options.hosts {
+        names.extend(own_hosts(&options.host, &options.origins));
     }
     Ok(options)
 }
@@ -145,6 +223,7 @@ struct State {
     keep_alive: Duration,
     open: bool,
     reads: Reads,
+    hosts: Hosts,
 }
 
 /// What a page is told when the binary wasn't started with --open.
@@ -200,6 +279,7 @@ fn main() {
         keep_alive: options.keep_alive,
         open: options.open,
         reads: options.reads,
+        hosts: options.hosts,
     });
     for request in server.incoming_requests() {
         let state = Arc::clone(&state);
@@ -384,6 +464,17 @@ fn read_json(request: &mut Request) -> Option<Value> {
 fn handle(state: &State, mut request: Request) {
     let url = request.url().to_owned();
     let path = url.split('?').next().unwrap_or_default().to_owned();
+    // Before anything is read or written, and with no CORS: a name the binary doesn't answer to.
+    let host = request_header(&request, "host");
+    if !state.hosts.allows(host) {
+        let name = host_name(host.unwrap_or_default());
+        return respond_json(
+            request,
+            Vec::new(),
+            403,
+            json!({ "error": format!("zubra-sync doesn't answer to the host {name:?} (a protection against DNS rebinding): start it with --allowed-host {name} if it's yours") }),
+        );
+    }
     let extra = cors(state, &request);
     if !path.starts_with(&format!("{MOUNT}/")) {
         return respond_json(request, extra, 404, json!({ "error": "Not found" }));
@@ -1047,6 +1138,56 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hosts_answer_to_addresses_localhost_and_the_names_they_were_given() {
+        let hosts = Hosts::Only(vec!["sync.internal".into(), ".app.example".into()]);
+        for host in [
+            "127.0.0.1:4000",
+            "10.0.0.5",
+            "[::1]:4000",
+            "[fd12::1]",
+            "localhost:4000",
+            "LOCALHOST",
+            "localhost.",
+            "tasks.localhost:3000",
+            "sync.internal:4000",
+            "Sync.Internal",
+            "app.example",
+            "eu.app.example:443",
+        ] {
+            assert!(hosts.allows(Some(host)), "{host}");
+        }
+        assert!(hosts.allows(None), "no Host: not a browser");
+        for host in [
+            "evil.example:4000",
+            "sync.internal.evil.example",
+            "evilsync.internal",
+            "notapp.example",
+            "app.example.evil.example",
+            "localhost.evil.example",
+            "127.0.0.1.evil.example",
+            "2130706433",
+            "",
+        ] {
+            assert!(!hosts.allows(Some(host)), "{host}");
+        }
+        assert!(Hosts::Any.allows(Some("evil.example")));
+        // What it listens on and the origins it serves are its own.
+        let own = Hosts::Only(super::own_hosts(
+            "Sync.Internal",
+            &["https://shop.example:8443".into(), "null".into()],
+        ));
+        assert!(own.allows(Some("sync.internal:4000")));
+        assert!(own.allows(Some("shop.example")));
+        assert!(!own.allows(Some("evil.example")));
+        assert_eq!(
+            origin_host("https://App.Example:8443/x").as_deref(),
+            Some("app.example")
+        );
+        assert_eq!(origin_host("http://[::1]:3000").as_deref(), Some("[::1]"));
+        assert_eq!(origin_host("null"), None);
+    }
+
     use super::*;
     use std::sync::mpsc::TryRecvError;
 
@@ -1097,6 +1238,7 @@ mod tests {
             keep_alive: Duration::from_secs(15),
             open: true,
             reads: Reads::Everything,
+            hosts: Hosts::Any,
         };
         for n in 0..=MAX_PENDING_EVENTS {
             let change = json!({ "collection": "tasks", "key": "one", "field": "v", "value": n, "clock": "000000000000001-00000-a" });

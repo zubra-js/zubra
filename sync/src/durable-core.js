@@ -14,7 +14,7 @@ export { MOUNT };
  * after the cut. So a crashed page's presence lingers about three keep-alives (6 s). A page that
  * closes normally says it's leaving and is gone at once.
  */
-const OPTIONS = new Set(['mount', 'heartbeat', 'device', 'table', 'origins', 'scope', 'maxSkew', 'maxBytes', 'maxChanges', 'authorize']);
+const OPTIONS = new Set(['mount', 'heartbeat', 'device', 'table', 'origins', 'scope', 'maxSkew', 'maxBytes', 'maxChanges', 'authorize', 'allowedHosts']);
 
 export function syncObject(ctx, owner, options = {}) {
   // Every option reaches the server: one dropped here would be a `scope` silently not kept, so
@@ -22,9 +22,12 @@ export function syncObject(ctx, owner, options = {}) {
   for (const name of Object.keys(options)) {
     if (!OPTIONS.has(name)) throw new Error(`SyncObject: \`${name}\` is not an option (${[...OPTIONS].join(', ')})`);
   }
-  const { heartbeat = 2_000, table = 'changes', authorize, ...rest } = options;
+  // Any Host by default: Cloudflare routes a request to the Worker by its Host, so a rebinding
+  // page (a name of its own pointed at Cloudflare's address) never reaches this object.
+  const { heartbeat = 2_000, table = 'changes', authorize, allowedHosts = true, ...rest } = options;
   const sync = createSyncServer({
     ...rest,
+    allowedHosts,
     log: durableObjectLog(ctx.storage, { table }),
     heartbeat,
     // The object's own authorize, then the options'; without either, no reads and no writes

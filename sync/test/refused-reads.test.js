@@ -7,7 +7,7 @@ import { createSyncServer, allowAnyone, allowReads } from '../src/server.js';
 let n = 0;
 const at = () => `${String(++n).padStart(15, '0')}-00000-dev1`;
 const change = (collection, key, value) => ({ collection, key, field: 'v', value, clock: at() });
-const url = (path, scope) => `http://shop/_zb/sync${path}${scope === undefined ? '' : `&scope=${encodeURIComponent(JSON.stringify(scope))}`}`;
+const url = (path, scope) => `http://localhost/_zb/sync${path}${scope === undefined ? '' : `&scope=${encodeURIComponent(JSON.stringify(scope))}`}`;
 const pull = async (sync, { since = '0', scope, headers = {} } = {}) => (await sync.fetch(new Request(url(`/pull?since=${since}`, scope), { headers }))).json();
 
 async function server(options) {

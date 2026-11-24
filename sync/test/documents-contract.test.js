@@ -6,7 +6,7 @@ import { syncStub } from '../src/durable-stub.js';
 import { namespace } from './durable-harness.js';
 import { documentsContract } from './documents-contract.js';
 
-const request = (path, init) => new Request(`http://shop/_zb/sync${path}`, init);
+const request = (path, init) => new Request(`http://localhost/_zb/sync${path}`, init);
 const pushRequest = (changes) => request('/push', { method: 'POST', body: JSON.stringify({ changes }), headers: { 'content-type': 'application/json' } });
 
 const harnesses = {
