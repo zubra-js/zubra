@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { demos } from '../../../demos/list.js';
+import { builtWith } from '../../../demos/built-with.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../../..');
@@ -29,4 +30,6 @@ export default {
     })),
   })),
   count: demos.length,
+  // Apps outside this repository (demos/built-with.js), each live in production.
+  builtWith,
 };

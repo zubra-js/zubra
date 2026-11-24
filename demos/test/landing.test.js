@@ -124,10 +124,28 @@ test('a hosted demo is https, needs a server, and its card opens it and says it 
   }
 });
 
-test('every hosted demo answers 200 (skipped offline)', async (t) => {
+test('every app built with Zubra elsewhere has a card that opens it live (https) and links its source', async () => {
+  const { builtWith } = await import('../built-with.js');
+  assert.ok(builtWith.length >= 9, `${builtWith.length} apps`);
+  assert.equal(new Set(builtWith.map((app) => app.id)).size, builtWith.length, 'ids are unique');
+  const html = page();
+  const section = html.split('<section class="wrap" id="built-with">')[1]?.split('</section>')[0];
+  assert.ok(section, 'the page has a Built with Zubra section');
+  const cards = section.split('<article class="card">').slice(1).map((one) => one.split('</article>')[0]);
+  assert.equal(cards.length, builtWith.length, 'one card each');
+  for (const app of builtWith) {
+    for (const url of [app.live, app.source]) assert.equal(new URL(url).protocol, 'https:', `${app.id}: ${url}`);
+    const card = cards.find((one) => one.includes(`href="${app.source}"`));
+    assert.ok(card, `${app.id} has a card that links ${app.source}`);
+    assert.ok(card.includes(`<a class="live" href="${app.live}">Open live</a>`), `${app.id}'s card opens ${app.live}`);
+  }
+});
+
+test('every hosted demo, and every app built with Zubra elsewhere, answers 200 (skipped offline)', async (t) => {
   const { demos } = await import('../list.js');
+  const { builtWith } = await import('../built-with.js');
   // A demo that has slept starts on the first request: that one can take a while.
-  const answers = await Promise.all(demos.filter((demo) => demo.live).map(async (demo) => {
+  const answers = await Promise.all([...demos.filter((demo) => demo.live), ...builtWith].map(async (demo) => {
     try {
       const response = await fetch(demo.live, { redirect: 'manual', signal: AbortSignal.timeout(90_000) });
       return { demo, status: response.status };

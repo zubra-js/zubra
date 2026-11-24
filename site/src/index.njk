@@ -146,3 +146,20 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
     {% endfor %}
   </div>
 </section>
+
+<section class="wrap" id="built-with">
+  <h2>Built with Zubra</h2>
+  <p class="section-lede">Apps outside this repository, on the published packages and in production. The Potomac Solutions apps are for made-up businesses: nothing in them is really sold or booked, and their data is cleared overnight.</p>
+  <div class="grid">
+    {% for app in site.builtWith %}
+    <article class="card">
+      <div class="body">
+        <p class="stack">{{ app.by }}</p>
+        <h4><a href="{{ app.live }}">{{ app.title }}</a></h4>
+        <p>{{ app.blurb }}</p>
+        <p class="links"><a class="live" href="{{ app.live }}">Open live</a> <a href="{{ app.source }}">Source</a></p>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
