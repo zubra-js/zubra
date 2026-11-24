@@ -226,9 +226,7 @@ test("shadow components made and removed don't leave a reference each behind", {
 // element while it was detached (moved into the page) used to be watched too. Connected in a
 // document that is then dropped (an iframe removed, an inert document), the element is never
 // disconnected, and the page's text node held it, its context and that document.
-// (With the signals engine, every element connected in a dropped document is kept, whether or not
-// its text moved, on main as well; why isn't known yet. A separate issue, so skipped there.)
-test('an element connected again in a dropped document is not kept by a text node that left it', { skip: skip || (process.env.ZUBRA_ENGINE === 'signals' && 'the signals engine keeps an element connected in a dropped document anyway') }, async () => {
+test('an element connected again in a dropped document is not kept by a text node that left it', { skip }, async () => {
   const { page } = await open('<div id="box"></div><div id="elsewhere"></div>', { modules: ['card'] });
   await page.evaluate(() => {
     const box = document.getElementById('box');
@@ -254,5 +252,31 @@ test('an element connected again in a dropped document is not kept by a text nod
   });
   assert.deepEqual(await collected(page, ['zb-card']), { 'zb-card': 0 });
   assert.equal(await page.evaluate(() => document.getElementById('elsewhere').childNodes.length), 100, 'the text nodes are still in the page');
+  await page.close();
+});
+
+// Signals mode kept every effect on one Watcher, which holds what it watches: an element connected
+// in a document that is then dropped is never disconnected, so its effects, and it, stayed
+// reachable from the page. Each effect has a Watcher of its own now, as the default engine keeps
+// no list of what it watches.
+test('elements connected in a dropped document are collected with it', { skip }, async () => {
+  const { page } = await open('<div id="box"></div>', { modules: ['card'] });
+  await page.evaluate(() => {
+    for (let i = 0; i < 50; i++) {
+      for (const kind of ['iframe', 'inert']) {
+        const card = document.createElement('zb-card');
+        card.append(document.createTextNode('Kept in the card'));
+        if (kind === 'iframe') {
+          const frame = document.createElement('iframe');
+          document.body.append(frame);
+          frame.contentDocument.body.append(card);
+          frame.remove();
+        } else {
+          document.implementation.createHTMLDocument('').body.append(card);
+        }
+      }
+    }
+  });
+  assert.deepEqual(await collected(page, ['zb-card']), { 'zb-card': 0 });
   await page.close();
 });
