@@ -23,3 +23,4 @@ tr.editing td { background: #fbfaf3; }
 .error { width: 100%; margin: 0; color: #a1251f; }
 #more td, .empty { text-align: center; color: #616a7d; }
 tr.htmx-swapping td { opacity: 0.4; transition: opacity 0.15s; }
+.demo-notice { margin: 0; padding: 0.4rem 1.5rem; background: #fff4c2; color: #4a3b00; font-size: 0.9rem; }

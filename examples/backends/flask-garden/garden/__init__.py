@@ -10,6 +10,7 @@ from flask import Flask, Response, abort, g, redirect, render_template, request,
 from markupsafe import Markup
 
 from zubra import Zubra
+from . import hosted as demo
 from .store import CROP_NAMES, CROPS, MAX_CROPS, Store
 
 HERE = Path(__file__).resolve().parent.parent
@@ -28,7 +29,8 @@ def repo_compiler() -> str | None:
     return None
 
 
-def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
+def create_app(*, store: Store | None = None, cache: bool = True, hosted: dict | None = None) -> Flask:
+    """`hosted`: the settings of a public demo (hosted.py), which caps and resets the garden."""
     app = Flask(__name__, template_folder=str(HERE / "templates"), static_folder=str(HERE / "static"))
     store = store or Store(os.environ.get("GARDEN_DB", ":memory:"))
     # ZUBRA_COMPILER still wins; then this checkout's build; then the package's own lookup.
@@ -36,6 +38,9 @@ def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
     # @zubra/runtime's ES modules, served as they are. In a deploy you'd copy runtime/src (or the
     # npm package's files) next to your static files; there's nothing to build.
     runtime = Path(os.environ.get("ZUBRA_RUNTIME", REPO / "runtime" / "src"))
+
+    if hosted is not None:
+        demo.install(app, store, **hosted)
 
     @app.before_request
     def start_page():

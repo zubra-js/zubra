@@ -18,9 +18,10 @@ const HTMX_CONFIG = JSON.stringify({ responseHandling: [{ code: '204', swap: fal
 /**
  * `store`: the inventory. `middleware`: a `@zubra/server` Hono middleware (renders components and
  * serves their browser modules). `htmx`, `css`: the script and stylesheet to serve at
- * `/vendor/htmx.js` and `/app.css`; leave them out when the host serves those itself.
+ * `/vendor/htmx.js` and `/app.css`; leave them out when the host serves those itself. `notice`: a
+ * line shown at the top of every page (a hosted demo's "data resets daily").
  */
-export function createShop({ store, middleware, htmx: htmxScript, css }) {
+export function createShop({ store, middleware, htmx: htmxScript, css, notice }) {
   const app = new Hono();
   const zubra = middleware.zubra;
   app.use(middleware);
@@ -91,6 +92,7 @@ export function createShop({ store, middleware, htmx: htmxScript, css }) {
   <script src="/vendor/htmx.js" defer></script>
 </head>
 <body>
+  ${notice ? html`<p class="demo-notice">${notice}</p>` : ''}
   <header class="top"><a class="brand" href="/">Spoke & Chain</a> ${lowCount()}</header>
   <main>${body}</main>
   ${raw(zubra.scripts())}

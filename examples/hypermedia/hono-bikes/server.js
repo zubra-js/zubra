@@ -1,8 +1,10 @@
 // `npm start` (Node.js) or `npm run start:bun` (Bun): http://localhost:3000
 import { createApp } from './src/app.js';
+import { fromEnv } from './src/hosted.js';
 import { createStore } from './src/store.js';
 
-const app = createApp({ store: createStore(), cache: !process.env.DEV });
+// HOSTED_DEMO=1: a public demo, capped and reset daily (src/hosted.js).
+const app = createApp({ store: createStore(), cache: !process.env.DEV, hosted: fromEnv() });
 const port = Number(process.env.PORT ?? 3000);
 
 let address;
