@@ -79,7 +79,10 @@ test('a Durable Object answers to any name by default: Cloudflare routes a reque
 test('the binary answers only to addresses, localhost and the names it was given', { skip: !binaryPath && 'needs the zubra-sync binary' }, async () => {
   const ask = (base, host, method = 'GET') => new Promise((resolve, reject) => {
     const { hostname, port } = new URL(base);
-    httpRequest({ host: hostname === 'localhost' ? '127.0.0.1' : hostname, port, method, path: '/_zb/sync/pull?since=0', headers: { host } }, (res) => {
+    // Where it listens: `localhost` may have resolved to IPv6, printed as [::1] (a URL's brackets
+    // aren't part of the address).
+    const address = hostname === 'localhost' ? '127.0.0.1' : hostname.replace(/^\[(.*)\]$/, '$1');
+    httpRequest({ host: address, port, method, path: '/_zb/sync/pull?since=0', headers: { host } }, (res) => {
       let body = '';
       res.on('data', (chunk) => (body += chunk));
       res.on('end', () => resolve({ status: res.statusCode, body }));
