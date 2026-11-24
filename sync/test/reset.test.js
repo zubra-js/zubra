@@ -6,7 +6,7 @@ import { backends } from './backends.js';
 
 const at = (n) => `${String(n).padStart(15, '0')}-00000-dev1`;
 const change = (key, value, n) => ({ collection: 'seats', key, field: 'v', value, clock: at(n) });
-const url = (path) => `http://shop/_zb/sync${path}`;
+const url = (path) => `http://localhost/_zb/sync${path}`;
 const push = (sync, changes) => sync.fetch(new Request(url('/push'), { method: 'POST', body: JSON.stringify({ changes }), headers: { 'content-type': 'application/json' } }));
 const pull = async (sync, since, scope) => (await sync.fetch(new Request(url(`/pull?since=${since}${scope ? `&scope=${encodeURIComponent(JSON.stringify(scope))}` : ''}`)))).json();
 async function firstEvent(response) {
