@@ -1,7 +1,8 @@
 // Every example, for the demo gallery (demos/build.mjs) and its screenshots (demos/screenshots.mjs).
 //
 // `build` is how a static example is built under a base path (the gallery links to it live);
-// the others need a server and are shown with a screenshot and a link to their source.
+// the others need a server and are shown with a screenshot and a link to their source, and
+// `live` is the https URL of one hosted on Railway (deploy/<id>/), which the card opens.
 // `interactive` is the page the gallery's test checks, when the first page has no JavaScript.
 
 export const demos = [
@@ -55,13 +56,16 @@ export const demos = [
   { id: 'helpdesk', dir: 'examples/helpdesk', title: 'Help desk', stack: 'Express, EJS, MongoDB', group: 'Servers',
     blurb: 'A ticket tracker that works without JavaScript, with a streamed activity feed.' },
   { id: 'hono-bikes', dir: 'examples/hypermedia/hono-bikes', title: 'Bike shop', stack: 'Hono and htmx', group: 'Servers',
-    blurb: 'Search, paging, quick sales and inline editing, swapped in by htmx and hydrated in place.' },
+    blurb: 'Search, paging, quick sales and inline editing, swapped in by htmx and hydrated in place.',
+    live: 'https://hono-bikes-production.up.railway.app/' },
   { id: 'flask-garden', dir: 'examples/backends/flask-garden', title: 'Garden plots', stack: 'Flask, Jinja, SQLite', group: 'Servers',
-    blurb: 'Components rendered by the Rust CLI, with no Node.js on the server.' },
+    blurb: 'Components rendered by the Rust CLI, with no Node.js on the server.',
+    live: 'https://flask-garden-production.up.railway.app/' },
   { id: 'axum-garden', dir: 'examples/backends/axum-garden', title: 'Garden plots, in Rust', stack: 'Axum', group: 'Servers',
     blurb: 'The Flask garden’s pages and components from a Rust server: compiled into the binary, with no Node.js and no child process.' },
   { id: 'standup', dir: 'examples/standup', title: 'Standup board', stack: 'Node.js and @zubra/sync', group: 'Servers',
-    blurb: 'One card per person, edited by everyone at once and offline, with the log in a SQLite file.' },
+    blurb: 'One card per person, edited by everyone at once and offline, with the log in a SQLite file.',
+    live: 'https://standup-production-8dbacc08.up.railway.app/' },
 
 
   // Plain HTML

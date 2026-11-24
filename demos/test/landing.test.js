@@ -107,3 +107,35 @@ test('the page links the VS Code extension and the editor docs', () => {
   assert.ok(existsSync(join(dir, 'docs/editor-support/index.html')), 'the editor-support page is built');
   assert.ok(html.includes('/docs/editor-support/'), 'and linked');
 });
+
+test('a hosted demo is https, needs a server, and its card opens it and says it can be slow', async () => {
+  const { demos } = await import('../list.js');
+  const hosted = demos.filter((demo) => demo.live);
+  assert.ok(hosted.length >= 3, `${hosted.length} hosted demos`);
+  const html = page();
+  for (const demo of hosted) {
+    assert.equal(new URL(demo.live).protocol, 'https:', `${demo.id}: ${demo.live}`);
+    assert.ok(!demo.build, `${demo.id} is a static example: the gallery serves it, nothing hosts it`);
+    // Its card is the one that links its source.
+    const card = html.split('<article class="card">').map((one) => one.split('</article>')[0]).find((one) => one.includes(`/tree/main/${demo.dir}"`));
+    assert.ok(card, `${demo.id} has a card`);
+    assert.ok(card.includes(`<a class="live" href="${demo.live}">Open live</a>`), `${demo.id}'s card opens ${demo.live}`);
+    assert.match(text(card), /first load after it has been idle/, `${demo.id}'s card says a cold start is slow`);
+  }
+});
+
+test('every hosted demo answers 200 (skipped offline)', async (t) => {
+  const { demos } = await import('../list.js');
+  // A demo that has slept starts on the first request: that one can take a while.
+  const answers = await Promise.all(demos.filter((demo) => demo.live).map(async (demo) => {
+    try {
+      const response = await fetch(demo.live, { redirect: 'manual', signal: AbortSignal.timeout(90_000) });
+      return { demo, status: response.status };
+    } catch (error) {
+      return { demo, error };
+    }
+  }));
+  const unreachable = answers.filter((answer) => answer.error);
+  if (unreachable.length === answers.length) return t.skip(`offline: ${unreachable[0].error.cause?.code ?? unreachable[0].error.message}`);
+  for (const { demo, status, error } of answers) assert.equal(status, 200, `${demo.id} (${demo.live}): ${error?.cause?.code ?? error?.message ?? status}`);
+});

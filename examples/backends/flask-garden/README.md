@@ -4,7 +4,7 @@
 
 The same garden from Rust is in [`../axum-garden`](../axum-garden), and its test checks the HTML is identical.
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://flask-garden-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A community garden's plot sign-up, in Python: Flask routes, Jinja templates and SQLite (the
 standard library's `sqlite3`). Its Zubra components are rendered to HTML by the **Rust compiler**,

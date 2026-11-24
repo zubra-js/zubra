@@ -2,7 +2,7 @@
 
 ![Bike shop](../../../demos/shots/hono-bikes.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://hono-bikes-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A bike shop's inventory with search, paging, quick sales and inline editing. It's built with
 [Hono](https://hono.dev) and [htmx](https://htmx.org), and runs on **Node.js or Bun**:

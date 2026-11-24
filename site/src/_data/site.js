@@ -19,7 +19,9 @@ export default {
     name,
     demos: demos.filter((demo) => demo.group === name).map((demo) => ({
       ...demo,
-      live: has(demo.id),
+      // `built`: a static example in this build, opened under /demos/. `live` (demos/list.js) is a
+      // hosted demo's URL, for the examples that need a server.
+      built: has(demo.id),
       shot: shot(demo.id),
       source: `https://github.com/${repository}/tree/main/${demo.dir}`,
     })),

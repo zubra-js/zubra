@@ -4,6 +4,11 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Three of the server examples are hosted, and the gallery opens them.** standup, hono-bikes and flask-garden run on Railway, one service each, built from this repository by `deploy/<demo>/Dockerfile` (the compiler from the checkout: WebAssembly for the Node.js demos, the native CLI for Flask, which has no Node.js). `.railway/railway.ts` declares a service per `deploy/` folder from its `railway.json` (the Dockerfile, the paths whose changes rebuild it, sleeping when idle), and `railway config apply` applies it. `demos/list.js` takes a `live` URL, and the card links it ("Open live") and says the first load after idle is slow; the landing test checks a `live` link is https, is on a card, and answers 200.
+- **`HOSTED_DEMO=1` makes those three safe to leave open to strangers.** Each says "Demo: data resets daily.", takes small request bodies (16 KiB; standup's sync 64 KiB), a few writes a minute from each visitor (standup: 10 a second, bursts of 100, as typing pushes every 30 ms), counted by the address the proxy appended to `X-Forwarded-For` (`TRUST_PROXIES`), and resets at midnight UTC (`DEMO_RESET_MINUTES`) and whenever it starts. The garden holds at most 500 waitlist entries and harvests; standup's log takes only the team's three cards, a string of at most 2,000 characters and a boolean each, latest values only, in a file wiped at start; the bike shop's inventory is a fixed list. Without the variable the examples run as before.
+
 ## 6.0.5 — 2026-11-23
 
 ### Added
