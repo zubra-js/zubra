@@ -147,9 +147,13 @@ def create_app(*, store: Store | None = None, cache: bool = True, hosted: dict |
         store.log_harvest(plot, crop, kg)
         return redirect(url_for("harvest", plot=plot, logged=crop), 303)
 
-    @app.post("/reset")
-    def reset():
-        store.reset()
-        return "", 204
+    # For the tests: back to the seed data. Not on a hosted demo, where it would let one visitor
+    # wipe everyone's edits (the demo resets on its own).
+    if hosted is None:
+
+        @app.post("/reset")
+        def reset():
+            store.reset()
+            return "", 204
 
     return app

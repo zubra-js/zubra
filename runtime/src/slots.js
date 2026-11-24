@@ -321,6 +321,10 @@ function routeChildren(host, context, slots, tag) {
   // it back where it was.
   context.observe = () => {
     for (const slot of context.slots.values()) show(slot);
+    // A slot attribute changed meanwhile went unseen too: what's still here goes where it says.
+    for (const slot of [...context.slots.values()]) {
+      for (const node of [...slot.nodes]) if (isContent(node) && slotName(node, host) !== slot.name) reslot(node);
+    }
     observe();
   };
   if (host.isConnected) observe();

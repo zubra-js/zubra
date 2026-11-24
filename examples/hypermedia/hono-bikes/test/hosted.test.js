@@ -28,6 +28,14 @@ test('every page says the data resets, and only when hosted', async () => {
   assert.ok(!(await (await local.fetch(new Request('http://shop.test/'))).text()).includes(NOTICE));
 });
 
+test("a visitor can't reset everyone else's edits", async () => {
+  // The tests' /reset would let one visitor wipe the others' work: the demo resets on its own.
+  const { get, store } = shop();
+  assert.equal((await get('/items/1', form({ name: "Visitor A's edit", price: '1', count: '1' }))).status, 303);
+  for (const path of ['/reset', '/reset/', '/%72eset']) assert.equal((await get(path, { method: 'POST' })).status, 404, path);
+  assert.equal(store.get(1).name, "Visitor A's edit");
+});
+
 test('a body over 16 KiB is refused before it reaches a route', async () => {
   const { get, store } = shop();
   const response = await get('/items/1', form({ name: 'x'.repeat(20_000), price: '1', count: '1' }));

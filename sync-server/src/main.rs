@@ -82,8 +82,10 @@ fn origin_host(origin: &str) -> Option<String> {
 /// The names the binary answers to without being told: the one it listens on (`--host`, when
 /// it's a name), and the hosts of the origins it serves (`--origin`).
 fn own_hosts(host: &str, origins: &[String]) -> Vec<String> {
+    // `--host ::` names no host (`host_name` gives ""), and an empty name would let in an empty Host.
     std::iter::once(host_name(host))
         .chain(origins.iter().filter_map(|origin| origin_host(origin)))
+        .filter(|name| !name.is_empty())
         .collect()
 }
 
@@ -98,7 +100,12 @@ impl Hosts {
             return true;
         };
         let name = host_name(host);
-        if name.starts_with('[') || name.parse::<std::net::Ipv4Addr>().is_ok() {
+        if name.is_empty() {
+            return false;
+        }
+        if (name.starts_with('[') && name.ends_with(']'))
+            || name.parse::<std::net::Ipv4Addr>().is_ok()
+        {
             return true;
         }
         if name == "localhost" || name.ends_with(".localhost") {
@@ -159,6 +166,10 @@ fn options() -> Result<Options, String> {
                 let name = value("--allowed-host")?;
                 if name.eq_ignore_ascii_case("any") {
                     options.hosts = Hosts::Any;
+                } else if host_name(name.trim_start_matches('.')).is_empty() {
+                    return Err(format!(
+                        "--allowed-host takes a host name (app.example, or .app.example for it and every name under it), not {name:?}"
+                    ));
                 } else if let Hosts::Only(names) = &mut options.hosts {
                     let dot = if name.starts_with('.') { "." } else { "" };
                     names.push(format!("{dot}{}", host_name(name.trim_start_matches('.'))));
@@ -1172,6 +1183,11 @@ mod tests {
             assert!(!hosts.allows(Some(host)), "{host}");
         }
         assert!(Hosts::Any.allows(Some("evil.example")));
+        // An IPv6 address has both brackets; an empty name is nobody's.
+        assert!(!hosts.allows(Some("[evil.example")));
+        assert!(!hosts.allows(Some(":80")));
+        assert!(super::own_hosts("::", &[]).is_empty());
+        assert!(super::own_hosts("[::1]", &[]) == vec!["[::1]".to_string()]);
         // What it listens on and the origins it serves are its own.
         let own = Hosts::Only(super::own_hosts(
             "Sync.Internal",

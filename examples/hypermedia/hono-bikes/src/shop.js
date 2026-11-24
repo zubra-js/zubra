@@ -21,7 +21,7 @@ const HTMX_CONFIG = JSON.stringify({ responseHandling: [{ code: '204', swap: fal
  * `/vendor/htmx.js` and `/app.css`; leave them out when the host serves those itself. `notice`: a
  * line shown at the top of every page (a hosted demo's "data resets daily").
  */
-export function createShop({ store, middleware, htmx: htmxScript, css, notice }) {
+export function createShop({ store, middleware, htmx: htmxScript, css, notice, hosted = false }) {
   const app = new Hono();
   const zubra = middleware.zubra;
   app.use(middleware);
@@ -173,9 +173,13 @@ export function createShop({ store, middleware, htmx: htmxScript, css, notice })
     return htmx(ctx) ? ctx.html(html`${row(sold)}${lowCount(true)}`) : ctx.redirect(`/#item-${found.id}`, 303);
   });
 
-  app.post('/reset', (ctx) => {
-    store.reset();
-    return ctx.body(null, 204);
-  });
+  // For the tests: back to the seed data. Not on a hosted demo, where it would let one visitor
+  // wipe everyone's edits (the demo resets on its own).
+  if (!hosted) {
+    app.post('/reset', (ctx) => {
+      store.reset();
+      return ctx.body(null, 204);
+    });
+  }
   return app;
 }

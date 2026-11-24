@@ -570,6 +570,27 @@ test('text a framework writes into a slot after the element was moved still reac
   await page.close();
 });
 
+// A slot attribute changed while the element was off the page went unseen: its observer stops
+// when it leaves (so it can't be kept alive), and connecting again only dropped what had left.
+// Found by the 6.0.6 pre-release audit in --emit element output; the runtime had it since 6.0.3.
+test('a slot attribute changed while the element was detached takes effect when it is back', async () => {
+  const { page, messages } = await open('<main><zb-card><b>Moved</b></zb-card></main>', { modules: ['card'] });
+  assert.equal((await readCard(page)).section, '<b>Moved</b>');
+  await page.evaluate(async () => {
+    const card = document.querySelector('zb-card');
+    const main = card.parentNode;
+    card.remove();
+    card.querySelector('b').setAttribute('slot', 'title');
+    main.append(card);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  const card = await readCard(page);
+  assert.equal(card.header, '<b slot="title">Moved</b>', 'in the title slot');
+  assert.equal(card.section, '<p>No content</p>', 'and out of the default one');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test('every slotted text node is heard after a move, not only the first', async () => {
   const { page, messages } = await open('<main></main>', {
     modules: ['card'],

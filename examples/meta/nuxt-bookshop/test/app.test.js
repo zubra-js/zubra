@@ -190,6 +190,22 @@ test('hosted: every page says the data resets, and only when hosted', async () =
   }
 });
 
+test("hosted: a visitor can't reset everyone else's edits, by any spelling of the path", async () => {
+  // The tests' reset would let one visitor wipe the others' work: the demo resets on its own. The
+  // router takes /api/reset/ and /api/%72eset to the same handler, which refuses it itself.
+  const demo = await start(DEMO);
+  try {
+    assert.equal((await raw(demo.url, 'PUT', '/api/books/b2', { headers: fromPage('203.0.113.20'), body: edit(777) })).status, 200);
+    for (const path of ['/api/reset', '/api/reset/', '/api/%72eset']) {
+      const response = await raw(demo.url, 'POST', path, { headers: fromPage('203.0.113.20'), body: {} });
+      assert.equal(response.status, 404, `${path}: ${response.text}`);
+    }
+    assert.equal((await (await fetch(`${demo.url}/api/books/b2`)).json()).stock, 777, 'the edit is still there');
+  } finally {
+    demo.child.kill();
+  }
+});
+
 test('hosted: behind the proxy, writes from the shop pass and cross-site ones are refused', async () => {
   const demo = await start(DEMO);
   try {
