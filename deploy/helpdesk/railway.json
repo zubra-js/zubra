@@ -1,0 +1,31 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "deploy/helpdesk/Dockerfile",
+    "watchPatterns": [
+      "/Cargo.toml",
+      "/Cargo.lock",
+      "/src/**",
+      "/wasm/**",
+      "/macros/**",
+      "/sync-server/**",
+      "/compiler/**",
+      "/registry/**",
+      "/runtime/**",
+      "/server/**",
+      "/actions/**",
+      "/examples/helpdesk/**",
+      "/deploy/helpdesk/**",
+      "/.dockerignore"
+    ]
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": true,
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}
