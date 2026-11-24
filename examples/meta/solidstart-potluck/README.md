@@ -2,7 +2,7 @@
 
 ![Potluck sign-up](../../../demos/shots/solidstart-potluck.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://solidstart-potluck-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A potluck sign-up in SolidStart 2 (on Vite and Nitro). The page shows who's bringing what, and
 has a form that posts to a server `action`. It works without JavaScript and submits in place

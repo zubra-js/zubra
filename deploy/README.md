@@ -7,6 +7,13 @@ The examples that need a server, hosted on Railway so the [gallery](https://zubr
 | `standup/` | `examples/standup` | Node.js, the compiler as WebAssembly |
 | `hono-bikes/` | `examples/hypermedia/hono-bikes` | Node.js, the compiler as WebAssembly |
 | `flask-garden/` | `examples/backends/flask-garden` | Python and the native `zubra` CLI, no Node.js |
+| `axum-garden/` | `examples/backends/axum-garden` | The Rust server alone, components compiled in |
+| `helpdesk/` | `examples/helpdesk` | Node.js, the compiler as WebAssembly, its in-memory store (no MongoDB) |
+| `next-conference/` | `examples/meta/next-conference` | Next.js standalone output |
+| `nuxt-bookshop/` | `examples/meta/nuxt-bookshop` | Nuxt's `.output` |
+| `sveltekit-workouts/` | `examples/meta/sveltekit-workouts` | SvelteKit's Node adapter |
+| `react-router-trips/` | `examples/meta/react-router-trips` | React Router's build behind Express |
+| `solidstart-potluck/` | `examples/meta/solidstart-potluck` | SolidStart's `.output` |
 
 Each folder has:
 - a `Dockerfile`, built from the repository root: `docker build -f deploy/<demo>/Dockerfile .`;

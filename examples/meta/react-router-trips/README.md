@@ -2,7 +2,7 @@
 
 ![Trip budget](../../../demos/shots/react-router-trips.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://react-router-trips-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A shared trip budget in React Router 8's framework mode: who paid for what, who's up and down,
 and a form to add an expense. It uses:
