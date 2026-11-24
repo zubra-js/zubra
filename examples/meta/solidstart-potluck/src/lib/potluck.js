@@ -1,5 +1,6 @@
 // The potluck's sign-ups, on the server (in memory), and the query and action the page uses.
 import { action, query } from '@solidjs/router';
+import { fromEnv, signupErrors } from './hosted.js';
 
 export const COURSES = [
   { id: 'main', title: 'Mains', detail: 'Something hearty', need: 3 },
@@ -36,6 +37,8 @@ export const signUp = action(async (form) => {
   if (!COURSES.some((course) => course.id === signup.course)) errors.push('Pick what you\'re bringing.');
   if (!Number.isInteger(signup.guests) || signup.guests < 1 || signup.guests > 6) errors.push('Between 1 and 6 people.');
   if (state.signups.some((existing) => existing.name.toLowerCase() === signup.name.toLowerCase())) errors.push(`${signup.name} has already signed up.`);
+  // A public demo (HOSTED_DEMO=1) holds a bounded number of short sign-ups (src/lib/hosted.js).
+  if (fromEnv()) errors.push(...signupErrors(signup, state.signups.length));
   if (errors.length) return { errors };
   state.signups = [...state.signups, signup];
   return { ok: signup.name };
