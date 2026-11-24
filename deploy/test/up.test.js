@@ -17,11 +17,19 @@ test('watch patterns match as Railway reads them, from the repository root', () 
 
 test('every demo has its watch patterns, and a change rebuilds only the demos it touches', () => {
   const all = services();
-  assert.deepEqual(Object.keys(all).sort(), ['flask-garden', 'hono-bikes', 'standup']);
+  const every = ['axum-garden', 'flask-garden', 'helpdesk', 'hono-bikes', 'next-conference', 'nuxt-bookshop',
+    'react-router-trips', 'solidstart-potluck', 'standup', 'sveltekit-workouts'];
+  assert.deepEqual(Object.keys(all).sort(), every);
   assert.deepEqual(affected(['examples/standup/server.js'], all), ['standup']);
   assert.deepEqual(affected(['examples/backends/flask-garden/app.py'], all), ['flask-garden']);
+  assert.deepEqual(affected(['examples/backends/axum-garden/src/main.rs'], all), ['axum-garden']);
   assert.deepEqual(affected(['sync/src/server.js'], all), ['standup'], 'only standup uses @zubra/sync');
-  assert.deepEqual(affected(['runtime/test/a.test.js'], all), ['hono-bikes', 'standup'], 'the garden ships runtime/src only');
-  assert.deepEqual(affected(['src/main.rs'], all), ['flask-garden', 'hono-bikes', 'standup'], 'the compiler goes into every image');
+  assert.deepEqual(affected(['actions/src/core.js'], all), ['helpdesk'], 'only helpdesk uses @zubra/actions');
+  assert.deepEqual(affected(['runtime/test/a.test.js'], all), every.filter((id) => !id.endsWith('-garden')),
+    'the gardens ship runtime/src only');
+  assert.deepEqual(affected(['plugin/src/index.js'], all),
+    ['next-conference', 'nuxt-bookshop', 'react-router-trips', 'solidstart-potluck', 'sveltekit-workouts'],
+    'the meta-framework demos build with @zubra/unplugin');
+  assert.deepEqual(affected(['src/main.rs'], all), every, 'the compiler goes into every image');
   assert.deepEqual(affected(['docs/sync.md', 'examples/todo/main.js', 'demos/list.js'], all), [], 'nothing that goes into an image');
 });
