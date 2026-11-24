@@ -21,15 +21,19 @@ async function desk(hosted = {}, { store = memoryStore() } = {}) {
   servers.push(server);
   await new Promise((resolve) => server.once('listening', resolve));
   const port = server.address().port;
-  /** One request; `form` is sent urlencoded. Resolves to { status, headers, body }. */
-  const send = (method, path, { headers = {}, form } = {}) => new Promise((resolve, reject) => {
+  /**
+   * One request; `form` is sent urlencoded, with its length or, `chunked`, without one.
+   * Resolves to { status, headers, body }.
+   */
+  const send = (method, path, { headers = {}, form, chunked = false } = {}) => new Promise((resolve, reject) => {
     const body = form && new URLSearchParams(form).toString();
-    const req = request({ host: '127.0.0.1', port, method, path, headers: { ...(body !== undefined && { 'content-type': 'application/x-www-form-urlencoded', 'content-length': Buffer.byteLength(body) }), ...headers } }, (res) => {
+    const req = request({ host: '127.0.0.1', port, method, path, headers: { ...(body !== undefined && { 'content-type': 'application/x-www-form-urlencoded', ...(!chunked && { 'content-length': Buffer.byteLength(body) }) }), ...headers } }, (res) => {
       let text = '';
       res.setEncoding('utf8').on('data', (chunk) => (text += chunk)).on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: text }));
     });
     req.on('error', reject);
-    req.end(body);
+    if (chunked) req.write(body); // (given to end(), Node would set the length)
+    req.end(chunked ? undefined : body);
   });
   /** Signs in as `user` from `from` (an X-Forwarded-For); the cookie to send. */
   const signIn = async (user, from = '192.0.2.1') => {
@@ -64,11 +68,16 @@ test('a body over 16 KiB is refused before it reaches a route or the server func
   const { send, signIn, store } = await desk();
   const cookie = await signIn('u-lena');
   const before = (await store.listTickets({})).length;
+  const replies = (await store.getTicket(1001)).messages.length;
   const big = await send('POST', '/tickets', { headers: { cookie }, form: { subject: 'A long story', body: 'x'.repeat(17_000) } });
   assert.equal(big.status, 413);
   assert.equal((await store.listTickets({})).length, before);
   const action = replyAction((await send('GET', '/tickets/1001', { headers: { cookie } })).body);
   assert.equal((await send('POST', action, { headers: { cookie }, form: { ticket: '1001', body: 'y'.repeat(17_000) } })).status, 413);
+  // Without a length, each reader stops at the limit.
+  assert.equal((await send('POST', '/tickets', { headers: { cookie }, chunked: true, form: { subject: 'A long story', body: 'x'.repeat(17_000) } })).status, 413);
+  assert.equal((await send('POST', action, { headers: { cookie, accept: 'application/json' }, chunked: true, form: { ticket: '1001', body: 'y'.repeat(17_000) } })).status, 413);
+  assert.equal((await store.getTicket(1001)).messages.length, replies);
   assert.equal((await send('POST', '/tickets', { headers: { cookie }, form: { subject: 'A short story', body: 'x'.repeat(15_000) } })).status, 303, 'under it is fine');
 });
 

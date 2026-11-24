@@ -235,6 +235,8 @@ export function createApp({ store, cache = true, now = () => Date.now(), hosted 
     await page(res, 'error', { title: 'Not found', message: "That page doesn't exist, or it isn't yours to see." }, 404);
   });
   app.use(async (error, req, res, next) => {
+    // (A hosted demo's form post past its limit, read without a length: the limit, not a failure.)
+    if (limits && error.type === 'entity.too.large' && !res.headersSent) return res.status(413).type('text').send(`A request body is at most ${limits.maxBytes} bytes.`);
     console.error(error);
     if (res.headersSent) return next(error);
     // In development the page says what and where (usually something to fix in a view or a
