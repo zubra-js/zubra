@@ -5,7 +5,7 @@ import { data, Form, useFetcher, useNavigation } from 'react-router';
 import BalanceList from '../../zubra/balance-list.zb';
 import MoneyInput from '../../zubra/money-input.zb';
 import SegmentedControl from '../../zubra/segmented-control.zb';
-import { add, balances, CATEGORIES, list, PEOPLE, remove } from '../lib/trip.server.js';
+import { add, balances, CATEGORIES, demoErrors, list, PEOPLE, remove } from '../lib/trip.server.js';
 
 export const meta = () => [{ title: 'Trip budget' }];
 
@@ -32,6 +32,7 @@ export async function action({ request }) {
   if (!CATEGORIES.includes(expense.category)) errors.category = 'Pick a category.';
   if (!PEOPLE.includes(expense.paidBy)) errors.paidBy = 'Who paid?';
   if (!expense.split.length) errors.split = 'Split it with at least one person.';
+  for (const [field, error] of Object.entries(demoErrors(expense))) errors[field] ??= error;
   if (Object.keys(errors).length) return data({ errors }, { status: 400 });
   add(expense);
   return { ok: true };
@@ -86,6 +87,7 @@ export default function Home({ loaderData, actionData }) {
             {people.map((name) => <label key={name}><input type="checkbox" name="split" value={name} defaultChecked /> {name}</label>)}
           </fieldset>
           {errors.split && <p className="error">{errors.split}</p>}
+          {errors.form && <p className="error">{errors.form}</p>}
           <button disabled={navigation.state !== 'idle'}>{navigation.state === 'submitting' ? 'Adding…' : 'Add expense'}</button>
         </Form>
       </section>
