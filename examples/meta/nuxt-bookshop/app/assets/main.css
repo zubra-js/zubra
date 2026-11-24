@@ -5,6 +5,7 @@ a { color: var(--accent); }
 .top { display: flex; align-items: baseline; gap: 1rem; padding: 0.8rem 1.5rem; background: #12312e; color: white; }
 .brand { color: white; font-weight: 800; text-decoration: none; }
 .top .muted { color: #a7c4bf; }
+.demo-notice { margin: 0; padding: 0.4rem 1.5rem; background: #fff4c2; color: #4a3b00; font-size: 0.9rem; }
 main { max-width: 48rem; margin: 0 auto; padding: 1.5rem; }
 h1 { margin: 0 0 0.75rem; }
 .muted { color: var(--muted); margin: 0; }
