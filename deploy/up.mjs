@@ -67,7 +67,7 @@ function main(argv) {
     console.log(`\n== ${id}`);
     // --ci streams the build and exits non-zero if it fails. Windows runs the CLI's npm shim, which
     // needs a shell: one command string, whose only variable part is a folder name in deploy/.
-    if (!/^[w-]+$/.test(id)) throw new Error(`deploy/up: not a service name: ${id}`);
+    if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`deploy/up: not a service name: ${id}`);
     const command = `railway up --service ${id} --ci`;
     const run = process.platform === 'win32'
       ? spawnSync(command, { cwd: repo, stdio: 'inherit', shell: true })
