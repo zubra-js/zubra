@@ -5,22 +5,23 @@
 //   cd .railway && npm ci && railway config plan     # what would change
 //   railway config apply                             # change it
 //
-// Railway reads this only when it's applied: a push deploys the services, it doesn't apply this.
-// DEMOS_BRANCH deploys another branch than main (a branch being tried out before it's merged).
+// Railway reads this only when it's applied. The services have no GitHub source: they're deployed
+// from a checkout by deploy/up.mjs (railway up), on a machine or runner of your own.
+//
+// This file is the whole project: a service with no folder in deploy/ is deleted by an apply.
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineRailway, github, project, service } from "railway/iac";
+import { defineRailway, project, service } from "railway/iac";
 
 const deploy = join(dirname(fileURLToPath(import.meta.url)), "../deploy");
-const branch = process.env.DEMOS_BRANCH ?? "main";
 
 export default defineRailway(() => {
   const demos = readdirSync(deploy).filter((id) => existsSync(join(deploy, id, "railway.json"))).sort();
   const services = demos.map((id) => {
     const { build, deploy: settings } = JSON.parse(readFileSync(join(deploy, id, "railway.json"), "utf8"));
     // The service's domain is on 8080, so the port is said here, not left to Railway to pick.
-    return service(id, { source: github("zubra-js/zubra", { branch }), build, deploy: settings, env: { PORT: "8080" } });
+    return service(id, { build, deploy: settings, env: { PORT: "8080" } });
   });
   return project("zubra-demos", { resources: services });
 });

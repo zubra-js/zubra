@@ -9,3 +9,7 @@ _site
 site/_site
 dist
 compiler/zubra.wasm
+**/.output
+**/.next
+**/.svelte-kit
+**/.nuxt
