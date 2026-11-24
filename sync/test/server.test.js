@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
+import { Readable } from 'node:stream';
 import { createSyncServer, memoryLog, allowAnyone } from '../src/server.js';
-import { backends } from './backends.js';
+import { backends, binaryPath, startBinary } from './backends.js';
 
 const change = (field, value, clock = '000000000000001-00000-dev1') => ({ collection: 'tasks', key: 't1', field, value, clock });
 /** A device whose clock runs 30 s ahead of the server's: inside maxSkew, so its changes are taken. */
@@ -97,9 +98,39 @@ test('behind a proxy that ends TLS, a page on this host writes without Sec-Fetch
     assert.equal(await post(`https://${host}.evil.example`), 403, 'a host that only starts with this one');
     assert.equal(await post('https://127.0.0.1:1'), 403, 'this address on another port');
     assert.equal(await post(`https://${host}`, { 'sec-fetch-site': 'cross-site' }), 403, 'Sec-Fetch-Site still decides when it is sent');
+    for (const origin of [`https://evil${host}`, `https://sub.${host}`, `ftp://${host}`, 'null', `https://${host}/`]) {
+      assert.equal(await post(origin), 403, origin);
+    }
+    // The proxy says the page is https: an http page of this host is a network attacker's.
+    assert.equal(await post(`http://${host}`, { 'x-forwarded-proto': 'https' }), 403, 'this host by http, on an https site');
+    assert.equal(await post(`https://${host}`, { 'x-forwarded-proto': 'https' }), 200, 'this host by https, said by the proxy');
   } finally {
     server.close();
   }
+});
+
+// Security audit of #435: an http page of this host is what a network attacker can write into an
+// https site with no HSTS, and an old browser sends its Origin with the site's cookies.
+test('an https request takes this host by https only; Node ending TLS itself is https', async () => {
+  const sync = createSyncServer({ authorize: allowAnyone });
+  const push = (url, origin) => sync.fetch(new Request(url, { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ changes: [change('title', origin)] }) })).then((r) => r.status);
+  assert.equal(await push('https://app.example/_zb/sync/push', 'https://app.example'), 200);
+  assert.equal(await push('https://app.example/_zb/sync/push', 'http://app.example'), 403);
+  // handle() builds an https URL when Node itself ends TLS, as @zubra/actions' adapter does.
+  let seen;
+  const spy = createSyncServer({ authorize: ({ request }) => ((seen = request.url), true) });
+  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ changes: [change('title', 'tls')] }))]), {
+    method: 'POST', url: '/_zb/sync/push', socket: { encrypted: true },
+    headers: { host: 'app.example', 'content-type': 'application/json', origin: 'http://app.example' },
+  });
+  const res = { statusCode: 0, on() {}, writeHead(status) { this.statusCode = status; return this; }, setHeader() {}, write() { return true; }, end() { return this; } };
+  await spy.handle(req, res);
+  assert.equal(res.statusCode, 403, 'an http page may not write to an https server');
+  req.headers.origin = 'https://app.example';
+  const again = Object.assign(Readable.from([Buffer.from(JSON.stringify({ changes: [change('title', 'tls')] }))]), { method: 'POST', url: '/_zb/sync/push', socket: { encrypted: true }, headers: req.headers });
+  await spy.handle(again, res);
+  assert.equal(res.statusCode, 200);
+  assert.match(seen, /^https:\/\/app\.example\//);
 });
 
 test('requests outside the mount are not the JavaScript server\'s', async () => {
@@ -623,5 +654,32 @@ test('a live stream closed while its backlog is read starts no keep-alive', asyn
     globalThis.setInterval = realSet;
     globalThis.clearInterval = realClear;
     sync.close?.();
+  }
+});
+
+// Security audit of #435: the binary read only Origin and Host, so an http page of this host
+// (what a network attacker can write into an https site without HSTS) wrote from any browser.
+// It decides now as the JavaScript server does: Sec-Fetch-Site first, then Origin.
+test('the binary decides a write as the JavaScript server does', { skip: !binaryPath && 'needs the zubra-sync binary' }, async () => {
+  const { base, close } = await startBinary(['--open', '--origin', 'https://shop.example']);
+  const host = new URL(base).host;
+  const post = (headers) => fetch(`${base}/_zb/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ changes: [change('title', JSON.stringify(headers))] }) }).then((r) => r.status);
+  try {
+    assert.equal(await post({}), 200, 'no Origin: not a browser');
+    assert.equal(await post({ origin: `http://${host}`, 'sec-fetch-site': 'same-origin' }), 200);
+    assert.equal(await post({ 'sec-fetch-site': 'none' }), 200);
+    assert.equal(await post({ origin: `http://${host}`, 'sec-fetch-site': 'same-site' }), 403, 'an http page of this host, from a browser that says so');
+    assert.equal(await post({ origin: `https://${host}`, 'sec-fetch-site': 'cross-site' }), 403);
+    assert.equal(await post({ origin: 'https://shop.example', 'sec-fetch-site': 'cross-site' }), 200, 'a listed origin');
+    // No Sec-Fetch-Site (Safari before 16.4, Firefox before 90): Origin decides.
+    assert.equal(await post({ origin: `https://${host}` }), 200);
+    assert.equal(await post({ origin: `http://${host}` }), 200, 'nothing says the page is https');
+    assert.equal(await post({ origin: `http://${host}`, 'x-forwarded-proto': 'https' }), 403, 'the proxy says the page is https');
+    assert.equal(await post({ origin: `https://${host}`, 'x-forwarded-proto': 'https' }), 200);
+    for (const origin of ['https://evil.example', `https://evil${host}`, `https://sub.${host}`, `ftp://${host}`, 'null', `https://${host}/`]) {
+      assert.equal(await post({ origin }), 403, origin);
+    }
+  } finally {
+    close();
   }
 });

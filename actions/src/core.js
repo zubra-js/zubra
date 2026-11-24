@@ -66,6 +66,19 @@ export function createActionsCore({ routes, client = null, forms = null, origins
       throw error;
     }
   }
+  // Whether the page is https: the request's URL, the app (`secure: true`) or the proxy in front
+  // (`X-Forwarded-Proto: https`). Only ever used to refuse an http page, never to let one in, so a
+  // client that sends the header itself can only shut itself out.
+  const overTls = (request) =>
+    secure === true || /^https:/i.test(request.url) || request.headers.get('x-forwarded-proto')?.split(',')[0].trim().toLowerCase() === 'https';
+  // Whether an origin (`https://app.example`) is this site's. Behind a proxy that ends TLS (Railway,
+  // Fly, a load balancer) the request's URL is http:// while the page is https://, so this host by
+  // https is always this site; this host by http only when nothing says the page is https, since
+  // on an https site an http page of the same host is what a network attacker can write.
+  const thisSite = (origin, request) => {
+    const { host } = new URL(request.url);
+    return origin === `https://${host}` || (!overTls(request) && origin === `http://${host}`);
+  };
   // A browser says where a post was sent from in Sec-Fetch-Site and Origin both: another site
   // is let in only by an Origin in `origins`.
   const allowed = (request) => {
@@ -74,11 +87,8 @@ export function createActionsCore({ routes, client = null, forms = null, origins
     if (site === 'same-origin' || site === 'none' || (origin && origins.includes(origin))) return true;
     if (site) return false;
     if (!origin) return true; // not a browser (curl, a test): CSRF needs a browser
-    // This host, by http or https: behind a proxy that ends TLS (Railway, Fly, a load balancer),
-    // Node's request URL is http:// while the page is https://, and a browser without
-    // Sec-Fetch-Site (Safari before 16.4, Firefox before 90) sends only Origin.
-    const { host } = new URL(request.url);
-    return origin === `http://${host}` || origin === `https://${host}`;
+    // A browser without Sec-Fetch-Site (Safari before 16.4, Firefox before 90) sends only Origin.
+    return thisSite(origin, request);
   };
 
   /**
@@ -93,7 +103,9 @@ export function createActionsCore({ routes, client = null, forms = null, origins
     if (!referer) return '/';
     try {
       const url = new URL(referer, request.url);
-      if (url.origin === new URL(request.url).origin) return '/' + (url.pathname + url.search).replace(/^\/+/, '');
+      // This site's page by the same rule as a post (behind a proxy, the page is https:// while the
+      // request is http://). Only its path is kept, so the answer never leaves the site.
+      if (thisSite(url.origin, request)) return '/' + (url.pathname + url.search).replace(/^\/+/, '');
     } catch {}
     return '/';
   };

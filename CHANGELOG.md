@@ -10,7 +10,16 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
-- **Behind a proxy that ends TLS, `@zubra/actions` and `@zubra/sync` take same-site posts from browsers that don't send `Sec-Fetch-Site`.** Without that header they compared `Origin` with the request's URL, which Node builds as `http://` while the page is `https://` behind Railway, Fly or a load balancer. So Safari before 16.4 and Firefox before 90 had every action post and sync write refused with a 403. An `Origin` naming this host by http or https is now this site's, as the `zubra-sync` binary already decided; another host, a look-alike host or another port is still refused, and `Sec-Fetch-Site` still decides when it's sent. Found hosting the demos.
+- **Behind a proxy that ends TLS, `@zubra/actions` and `@zubra/sync` take same-site posts from browsers that don't send `Sec-Fetch-Site`.** Without that header they compared `Origin` with the request's URL, which Node builds as `http://` while the page is `https://` behind Railway, Fly or a load balancer. So Safari before 16.4 and Firefox before 90 had every action post and sync write refused with a 403. An `Origin` naming this host by https is now this site's; by http, only when nothing says the page is https (the request's URL, actions' `secure: true`, or the proxy's `X-Forwarded-Proto: https`). Another host, a look-alike host, another port or scheme, and `Origin: null` are refused, and `Sec-Fetch-Site` still decides when it's sent. Found hosting the demos.
+- **Behind such a proxy, a form posted without JavaScript goes back to its page**, not the site's root, and its result is that page's: `@zubra/actions` compared the `Referer`'s origin with the http request's. `@zubra/router`'s `redirect('https://this.site/x')` is this site there too, rather than an error; a same-host location of either scheme is written as a path, so an https page is never sent to http.
+- **`@zubra/sync`'s Node `handle()` knows when Node itself ends TLS**, as actions' adapter did: its request URL was always `http://`.
+
+### Security
+
+From a security audit of this change before release.
+
+- **An http page of this host can't post to an https site.** The first version of the fix above took this host by http or https on every request. On a site without HSTS, a network attacker can serve an http page under the site's host, and an old browser sends its `Origin` (`http://app.example`) with the site's cookies, so on an https request, or with direct TLS in Node, that was newly let in. It's refused now whenever the site is known to be https.
+- **The `zubra-sync` binary reads `Sec-Fetch-Site`.** It decided a write by `Origin` and `Host` alone, so `Origin: http://<host>` was taken from any browser, `Sec-Fetch-Site: same-site` included. It decides as `@zubra/sync`'s server does now, with the same `X-Forwarded-Proto` rule.
 
 ## 6.0.5 — 2026-11-23
 

@@ -15,10 +15,14 @@ export function checkedLocation({ location, external }, url) {
     throw new RouteError(`redirect() to ${JSON.stringify(location)}: not a URL`);
   }
   if (!['http:', 'https:'].includes(target.protocol)) throw new RouteError(`redirect() to a ${target.protocol} URL is refused`);
-  if (target.origin !== url.origin && !external) throw new RouteError(`redirect() to ${target.origin}, another site: say redirect(to, { external: true }) if that's meant`);
+  // This host by http or https is this site: behind a proxy that ends TLS, the request's URL is
+  // http:// while the page is https://. It's written as a path, so the browser stays on the
+  // scheme it's on (an http:// location never takes an https page down to http).
+  const here = target.host === url.host;
+  if (!here && !external) throw new RouteError(`redirect() to ${target.origin}, another site: say redirect(to, { external: true }) if that's meant`);
   // A path on this site that begins `//` (from `https://site//evil.example`, `.//evil.example` or
   // `..//evil.example`) is protocol-relative in a Location header: one slash keeps it here.
-  return target.origin === url.origin ? '/' + (target.pathname + target.search + target.hash).replace(/^[/\\]+/, '') : target.href;
+  return here ? '/' + (target.pathname + target.search + target.hash).replace(/^[/\\]+/, '') : target.href;
 }
 
 /** `return notFound()`: the path has nothing behind it (no such farm). The response is a 404. */
