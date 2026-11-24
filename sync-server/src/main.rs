@@ -232,15 +232,36 @@ fn cors(state: &State, request: &Request) -> Vec<Header> {
     }
 }
 
-/// A browser post must come from this origin or an allowed one. No Origin: not a browser.
+/// A browser post must come from this origin or an allowed one, decided as `@zubra/sync`'s
+/// JavaScript server does. Sec-Fetch-Site first: `same-origin` and `none` are this site, any other
+/// value is another (`same-site` included: a subdomain, or this host by http on an https site).
+/// Without it, Origin: this host by https, or by http when nothing says the page is https
+/// (`X-Forwarded-Proto`, only ever used to refuse). No Origin: not a browser.
 fn origin_allowed(state: &State, request: &Request) -> bool {
-    let Some(origin) = request_header(request, "origin") else {
+    let origin = request_header(request, "origin");
+    if let Some(origin) = origin {
+        if state.origins.iter().any(|allowed| allowed == origin) {
+            return true;
+        }
+    }
+    match request_header(request, "sec-fetch-site") {
+        Some("same-origin" | "none") => return true,
+        Some(_) => return false,
+        None => {}
+    }
+    let Some(origin) = origin else {
         return true;
     };
-    let host = request_header(request, "host").unwrap_or_default();
-    origin == format!("http://{host}")
-        || origin == format!("https://{host}")
-        || state.origins.iter().any(|allowed| allowed == origin)
+    let Some(host) = request_header(request, "host").filter(|host| !host.is_empty()) else {
+        return false;
+    };
+    let over_tls = request_header(request, "x-forwarded-proto").is_some_and(|proto| {
+        proto
+            .split(',')
+            .next()
+            .is_some_and(|first| first.trim().eq_ignore_ascii_case("https"))
+    });
+    origin == format!("https://{host}") || (!over_tls && origin == format!("http://{host}"))
 }
 
 fn respond_json(request: Request, extra: Vec<Header>, status: u16, value: Value) {

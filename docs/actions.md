@@ -177,7 +177,7 @@ It needs nothing else from this package: with a bundler, `import '@zubra/actions
 
 ## Security
 
-- **Cross-site posts are refused** (by `Sec-Fetch-Site`, or `Origin` when that's missing), so a form on another site can't call an action with your users' cookies. Allow more origins with `origins: [...]`.
+- **Cross-site posts are refused**, so a form on another site can't call an action with your users' cookies. `Sec-Fetch-Site` decides when a browser sends it (`same-origin` only). Older browsers (Safari before 16.4, Firefox before 90) send only `Origin`, which must be this host by https, or by http when nothing says the page is https: the request's URL, `secure: true`, or the proxy's `X-Forwarded-Proto: https`. So behind a proxy that ends TLS, an https page is let in, and an http page of the same host (what a network attacker could write into a site without HSTS) is not. Allow more origins with `origins: [...]`. Serve the site with HSTS all the same: it's what keeps an old browser off plain http in the first place.
 - **The client never decides anything.** A server function validates its `FormData` like any endpoint: the form's `required` and `type="email"` are conveniences, not checks.
 - **A thrown error is never shown.** The client gets a generic error; `onError(error, request)` gets the real one.
 - **Unknown actions are 404**, and only `'use server'` functions have URLs.

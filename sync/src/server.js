@@ -492,8 +492,16 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     const site = request.headers.get('sec-fetch-site');
     if (site === 'same-origin' || site === 'none' || listed(request)) return true;
     if (site) return false;
+    // A browser that doesn't send Sec-Fetch-Site (Safari before 16.4, Firefox before 90) still
+    // sends Origin. This host by https is this site's: behind a proxy that ends TLS (Railway, Fly,
+    // a load balancer), the request's URL is http:// while the page is https://. This host by http
+    // is only when nothing says the page is https (the URL, or `X-Forwarded-Proto`, used only to
+    // refuse): on an https site, an http page of the same host is what a network attacker writes.
     const origin = request.headers.get('origin');
-    return !origin || origin === new URL(request.url).origin;
+    if (!origin) return true;
+    const { host, protocol } = new URL(request.url);
+    const overTls = protocol === 'https:' || request.headers.get('x-forwarded-proto')?.split(',')[0].trim().toLowerCase() === 'https';
+    return origin === `https://${host}` || (!overTls && origin === `http://${host}`);
   };
   // What lets a page on one of `origins` read the answer (its pulls, its live stream), and send
   // JSON at all: CORS, as the zubra-sync binary gives its --origins. Any other site's page gets
@@ -729,7 +737,8 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     let url;
     // A Host header that isn't a host can't make a URL: a 400 before the body is read, not an
     // unhandled rejection that ends the process.
-    try { url = new URL(`http://${hostOf(req)}${req.url}`); } catch { res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request'); return true; }
+    // https when Node itself ends TLS, as @zubra/actions' adapter does.
+    try { url = new URL(`${req.socket?.encrypted ? 'https' : 'http'}://${hostOf(req)}${req.url}`); } catch { res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request'); return true; }
     const controller = new AbortController();
     res.on('close', () => controller.abort());
     const chunks = [];
