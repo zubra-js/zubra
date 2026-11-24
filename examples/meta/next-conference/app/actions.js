@@ -2,10 +2,14 @@
 // The feedback form's Server Action. The star rating and the switch are zubra form controls
 // (form-associated custom elements), so their values arrive in FormData like any input's.
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
+import { fromEnv, LIMITED, TOO_MANY } from '@/lib/hosted.js';
 import { addFeedback } from '@/lib/feedback.js';
 import { findSession } from '@/lib/sessions.js';
 
 export async function submitFeedback(previous, form) {
+  // A hosted demo's visitor over the write limit (proxy.js).
+  if (fromEnv() && (await headers()).get(LIMITED) === '1') return { ok: false, message: TOO_MANY };
   const session = findSession(String(form.get('session')));
   if (!session) return { ok: false, message: 'That session no longer exists.' };
   const rating = Number(form.get('rating'));
