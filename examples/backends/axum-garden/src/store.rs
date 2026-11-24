@@ -130,6 +130,11 @@ impl Store {
         self.harvests.push((plot.to_owned(), crop.to_owned(), kg));
     }
 
+    /// How many waitlist entries and harvests there are: what visitors add to.
+    pub fn records(&self) -> usize {
+        self.plots.iter().map(|plot| plot.waiting).sum::<usize>() + self.harvests.len()
+    }
+
     /// Kilograms per crop, most first, then by crop name.
     pub fn harvest_by_crop(&self) -> Vec<(String, f64)> {
         let mut totals: Vec<(String, f64)> = Vec::new();
