@@ -729,13 +729,22 @@ pub fn emit(
             "    // The styles go to the root the element is in: the document, or a shadow root it's inside.\n    const root = this.getRootNode();\n    if (root.adoptedStyleSheets) {{\n      if (!{sheet}) {{\n        {sheet} = new CSSStyleSheet();\n        {sheet}.replaceSync(css);\n      }}\n      if (!root.adoptedStyleSheets.includes({sheet})) root.adoptedStyleSheets = [...root.adoptedStyleSheets, {sheet}];\n    }}\n"
         ));
     }
-    out.push_str("    if (!this.#started) this.#start();\n    this.#update();\n");
+    // A slot observer stops when the element leaves the page (see disconnectedCallback).
+    let observes = uses_slots && !slots.is_empty();
+    if observes {
+        out.push_str("    if (!this.#started) this.#start();\n    else this.#rejoin(); // its slots are watched again\n    this.#update();\n");
+    } else {
+        out.push_str("    if (!this.#started) this.#start();\n    this.#update();\n");
+    }
     if members.contains("mounted") {
         out.push_str("    this.#runMounted();\n");
     }
     out.push_str("  }\n");
-    if members.contains("mounted") || members.contains("unmounted") {
+    if observes || members.contains("mounted") || members.contains("unmounted") {
         out.push_str("\n  disconnectedCallback() {\n");
+        if observes {
+            out.push_str("    // Watching a slotted text node registers on it: one that leaves, kept elsewhere, would\n    // otherwise keep this element alive. Connecting again watches what's still here.\n    this.#observer?.disconnect();\n");
+        }
         if members.contains("mounted") {
             out.push_str("    // What onMount() returned: undone each time the element leaves the page.\n    for (const cleanup of this.#cleanups.splice(0)) cleanup();\n");
         }
