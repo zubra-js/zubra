@@ -542,6 +542,34 @@ test("a child shaped like the component's own root keeps text a framework writes
   await page.close();
 });
 
+test('text a framework writes into a slot after the element was moved still reaches the slot (Angular, re-attached)', async () => {
+  // A slot hears that a text node got words through an observer, which disconnect drops so a
+  // detached element isn't retained. Connecting again must observe the text nodes too, not only
+  // the host and the park: from 6.0.3 it didn't, so a label written after a move never showed.
+  const { page, messages } = await open('<main></main>', {
+    modules: ['card'],
+    beforeModules: `
+      const card = document.createElement('zb-card');
+      window.text = document.createTextNode('');
+      card.append(window.text);
+      document.querySelector('main').append(card);`,
+  });
+  assert.equal((await readCard(page)).section, '<p>No content</p>', 'an empty text node is not content');
+  await page.evaluate(async () => {
+    const card = document.querySelector('zb-card');
+    const main = card.parentNode;
+    card.remove();
+    main.append(card); // moved: disconnected, then connected again
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    window.text.data = 'Hello';
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.equal((await readCard(page)).section, 'Hello', 'the text written after the move is in the slot');
+  assert.equal(await page.evaluate(() => window.text.isConnected && window.text.parentNode === document.querySelector('zb-card section')), true, 'the same text node, moved into the slot');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test('server markup that lost its markers is told from page content by data-zb-filled on the host', { skip: runtimeOnly }, async () => {
   // The server writes data-zb-filled on a light-DOM host that has slots, naming the ones it
   // filled: that host's marker-less children are its own markup, and hydrate in place.

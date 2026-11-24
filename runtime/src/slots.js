@@ -311,6 +311,9 @@ function routeChildren(host, context, slots, tag) {
     context.observer.disconnect();
     context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
     for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
+    // disconnect() also dropped the observation of each text node (a slot hears that one got
+    // words through it), so a label written after the element was moved never reached the slot.
+    for (const slot of context.slots.values()) slot.nodes.forEach(watch);
   };
   if (host.isConnected) context.observe();
   for (const slot of context.slots.values()) slot.nodes.forEach(watch);

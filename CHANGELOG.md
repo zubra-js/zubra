@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Fixed
+
+- **Text written into a slot after its element was moved reaches the slot again** (a regression in 6.0.3, 6.0.4 and 6.0.5). A slot hears that a text node got words through a `MutationObserver`. 6.0.3 made disconnect drop that observer so a detached element isn't retained, and connecting again re-observed the host and the park but not the text nodes, since `disconnect()` had dropped those too. A framework that creates a blank text node and fills it in later (Angular's `{{ }}`) lost the label once the element had been moved or re-attached: the slot kept showing its fallback, or nothing, and a button's accessible name was empty. Connecting again now watches every slotted text node as well. A browser test moves an element and then writes text into a blank text node.
+
 ### Added
 
 - **Social cards for the landing page, the docs and the playground.** Each page now has `og:*` and `twitter:card` tags and a 1200×630 image, so a shared link shows a preview. The cards are in `brand/og/` (`node brand/og/build.mjs` redraws them).
