@@ -13,6 +13,8 @@ const shot = (id) => existsSync(join(repo, 'demos/shots', `${id}.jpg`));
 
 export default {
   version: JSON.parse(readFileSync(join(repo, 'runtime/package.json'), 'utf8')).version,
+  // Where the site is served from, for the absolute addresses social cards need (og:image can't be relative).
+  origin: process.env.SITE_ORIGIN ?? `https://${repository.split('/')[0]}.github.io`,
   github: `https://github.com/${repository}`,
   marketplace: 'https://marketplace.visualstudio.com/items?itemName=JourneytoCode.zubra',
   groups: [...new Set(demos.map((demo) => demo.group))].map((name) => ({

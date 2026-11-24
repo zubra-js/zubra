@@ -7,7 +7,7 @@
 // - compiler/zubra.wasm (from `npm run build` in compiler/), when it's there;
 // - React and Vue as ES modules for their previews, from examples/frameworks' node_modules
 //   (`npm ci` there), unless --no-frameworks.
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,7 +20,12 @@ const out = resolve(args[args.indexOf('--out') + 1] && args.includes('--out') ? 
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'vendor'), { recursive: true });
-for (const file of ['index.html', 'app.js', 'highlight.js', 'style.css']) cpSync(join(here, file), join(out, file));
+for (const file of ['app.js', 'highlight.js', 'style.css']) cpSync(join(here, file), join(out, file));
+// The page's social card needs absolute addresses (og:image can't be relative): the demos build passes SITE_URL
+// (the origin and base the whole site is served from, ending in /); otherwise it's the repository's Pages address.
+const [owner, name] = (process.env.GITHUB_REPOSITORY ?? 'zubra-js/zubra').split('/');
+const site = process.env.SITE_URL ?? `https://${owner}.github.io/${name}/`;
+writeFileSync(join(out, 'index.html'), readFileSync(join(here, 'index.html'), 'utf8').replaceAll('__SITE__', site));
 cpSync(join(repo, 'runtime/src'), join(out, 'runtime'), { recursive: true });
 // @zubra/sync, for components that start with 'use collection' (the "State on the device" example).
 cpSync(join(repo, 'sync/src'), join(out, 'sync'), { recursive: true, filter: (from) => !/(\.d\.ts|server\.js|sqlite\.js)$/.test(from) });

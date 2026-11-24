@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Write components like HTML. Ship them as the platform’s own.">
+  <title>Write components like HTML. Ship them as the platform’s own.</title>
+  <defs>
+    <pattern id="stripes" width="26" height="26" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect width="13" height="26" fill="#232738"/><rect x="13" width="13" height="26" fill="#8b95ff"/></pattern>
+    <radialGradient id="glow" cx="0.85" cy="0.1" r="0.8"><stop offset="0" stop-color="#4f5df5" stop-opacity="0.28"/><stop offset="1" stop-color="#4f5df5" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#14161F"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <g transform="translate(66 52) scale(0.6)"><path fill="#F2F3F8" d="M10 15 a5 5 0 0 1 5 -5 H81 a5 5 0 0 1 5 5 V27 H10 Z"/><path fill="#F2F3F8" d="M10 69 H86 V81 a5 5 0 0 1 -5 5 H15 a5 5 0 0 1 -5 -5 Z"/><path fill="#8b95ff" d="M54 27 H86 L42 69 H10 Z"/></g>
+  <text x="136" y="95" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="38" font-weight="700" fill="#F2F3F8">zubra</text>
+  <text x="72" y="168" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="3" fill="#8b95ff">A COMPILER FOR WEB COMPONENTS</text>
+  <text x="72" y="246" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="800" fill="#F2F3F8" letter-spacing="-1">Write components</text>
+  <text x="72" y="312" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="800" fill="#F2F3F8" letter-spacing="-1">like HTML. Ship them</text>
+  <text x="72" y="378" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="800" fill="#F2F3F8" letter-spacing="-1">as the platform’s own.</text>
+  
+  <text x="72" y="568" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="22" fill="#9aa0b4">zubra-js.github.io/zubra</text>
+  <g>
+    <rect x="740" y="150" width="396" height="340" rx="16" fill="#0d0f15" stroke="#2c3040" stroke-width="2"/>
+    <circle cx="768" cy="178" r="6" fill="#2c3040"/><circle cx="788" cy="178" r="6" fill="#2c3040"/><circle cx="808" cy="178" r="6" fill="#2c3040"/>
+    <text x="1108" y="184" text-anchor="end" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="16" fill="#9aa0b4">copy-button.zb</text>
+    <text x="772" y="232" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"><tspan fill="#aab2ff">let</tspan><tspan fill="#b8bdd0"> status = </tspan><tspan fill="#7ee0a6">'idle'</tspan></text>
+  <text x="772" y="264" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"></text>
+  <text x="772" y="296" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"><tspan fill="#b8bdd0">&lt;</tspan><tspan fill="#ff8fb3">copy-button</tspan><tspan fill="#f5b97a"> text label</tspan><tspan fill="#b8bdd0">=</tspan><tspan fill="#7ee0a6">"Copy"</tspan><tspan fill="#b8bdd0">&gt;</tspan></text>
+  <text x="772" y="328" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"><tspan fill="#b8bdd0">  &lt;</tspan><tspan fill="#ff8fb3">button</tspan><tspan fill="#f5b97a"> onclick</tspan><tspan fill="#b8bdd0">={</tspan><tspan fill="#7cc4ff">copy</tspan><tspan fill="#b8bdd0">}&gt;</tspan></text>
+  <text x="772" y="360" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"><tspan fill="#b8bdd0">    {</tspan><tspan fill="#7cc4ff">label</tspan><tspan fill="#b8bdd0">}</tspan></text>
+  <text x="772" y="392" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"><tspan fill="#b8bdd0">  &lt;/</tspan><tspan fill="#ff8fb3">button</tspan><tspan fill="#b8bdd0">&gt;</tspan></text>
+  <text x="772" y="424" font-family="'DejaVu Sans Mono', ui-monospace, Menlo, monospace" font-size="17" xml:space="preserve"><tspan fill="#b8bdd0">&lt;/</tspan><tspan fill="#ff8fb3">copy-button</tspan><tspan fill="#b8bdd0">&gt;</tspan></text>
+  </g>
+  <rect y="604" width="1200" height="26" fill="url(#stripes)"/>
+</svg>
