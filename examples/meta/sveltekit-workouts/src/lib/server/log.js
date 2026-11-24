@@ -9,11 +9,14 @@ function seed(now = Date.now()) {
   return plan.map(([ago, exercise, sets, reps, effort], index) => ({ id: index + 1, exercise, sets, reps, effort, at: now - ago * DAY - 3_600_000 }));
 }
 
-const state = (globalThis.__workouts ??= { list: seed() });
+const state = (globalThis.__workouts ??= { list: seed(), max: Infinity });
 export const reset = () => { state.list = seed(); };
+/** Keep at most `max` workouts (a hosted demo's bound): logging one more drops the oldest. */
+export const cap = (max) => { state.max = max; };
 export const workouts = () => [...state.list].sort((a, b) => b.at - a.at);
 export function add(workout) {
   state.list.push({ ...workout, id: Math.max(0, ...state.list.map((item) => item.id)) + 1, at: Date.now() });
+  if (state.list.length > state.max) state.list = state.list.sort((a, b) => b.at - a.at || b.id - a.id).slice(0, state.max);
 }
 /** Workouts per day, `{ 'YYYY-MM-DD': count }`. */
 export function perDay() {
