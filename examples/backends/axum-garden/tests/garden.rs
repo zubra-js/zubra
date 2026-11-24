@@ -365,3 +365,104 @@ async fn the_pages_match_the_flask_examples() {
     .await
     .unwrap();
 }
+
+/// With the Flask example running as a public demo too (`HOSTED_DEMO=1 TRUST_PROXIES=1`, at
+/// `FLASK_GARDEN_HOSTED_URL`), the hosted pages are the same HTML, banner included, and the limits
+/// answer the same way.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_hosted_pages_match_the_flask_examples() {
+    let Ok(flask) = std::env::var("FLASK_GARDEN_HOSTED_URL") else {
+        eprintln!("FLASK_GARDEN_HOSTED_URL is not set: skipping the hosted comparison with the Flask example");
+        return;
+    };
+    let hosted = axum_garden::Hosted {
+        trust_proxies: 1,
+        ..Default::default()
+    };
+    let app = axum_garden::app_with(Default::default(), Some(hosted));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let axum = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let app = app.into_make_service_with_connect_info::<SocketAddr>();
+        axum::serve(listener, app).await.unwrap()
+    });
+    tokio::task::spawn_blocking(move || {
+        // A visitor of our own on each run: the Flask demo keeps counting between runs.
+        let run = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let visitor = |n: u32| format!("2001:db8::{:x}:{n}", run % 0xffff);
+        let send = |url: &str, form: &[(&str, &str)], who: &str| {
+            let mut response = agent()
+                .post(url)
+                .header("X-Forwarded-For", who)
+                .send_form(form.iter().copied())
+                .unwrap();
+            let retry = response
+                .headers()
+                .get("retry-after")
+                .map(|value| value.to_str().unwrap().to_owned());
+            let status = response.status().as_u16();
+            let body = response.body_mut().read_to_string().unwrap_or_default();
+            (status, retry, body)
+        };
+        for site in [&flask, &axum] {
+            assert_eq!(send(&format!("{site}/reset"), &[], &visitor(1)).0, 204);
+        }
+        for path in ["/", "/plots/A1", "/plots/B1", "/harvest"] {
+            let (a, b) = (
+                get(&format!("{flask}{path}")),
+                get(&format!("{axum}{path}")),
+            );
+            assert_eq!(a.0, b.0, "{path}: status");
+            assert!(b
+                .1
+                .contains("<p class=\"demo-notice\">Demo: data resets daily.</p>"));
+            assert_eq!(normalized(&b.1), normalized(&a.1), "{path}");
+        }
+        // A body over 16 KiB, and one under it.
+        let big = "x".repeat(20_000);
+        let under = "x".repeat(16 * 1024 - 200);
+        for (name, expected) in [(&big, 413), (&under, 422)] {
+            let form = [("name", name.as_str()), ("email", "nope")];
+            let (a, b) = (
+                send(&format!("{flask}/plots/B1"), &form, &visitor(2)),
+                send(&format!("{axum}/plots/B1"), &form, &visitor(2)),
+            );
+            assert_eq!((a.0, b.0), (expected, expected), "{} bytes", name.len());
+        }
+        // Thirty writes a minute from one visitor (an invalid signup: it stores nothing), then the
+        // same 429. Once more if the minute turned while they were sent.
+        for attempt in 0.. {
+            let minute = || {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    / 60
+            };
+            let start = minute();
+            let who = visitor(10 + attempt);
+            let form = [("name", ""), ("email", "nope")];
+            let run = |site: &str| {
+                (0..32)
+                    .map(|_| send(&format!("{site}/plots/B1"), &form, &who))
+                    .collect::<Vec<_>>()
+            };
+            let (a, b) = (run(&flask), run(&axum));
+            if minute() != start && attempt < 2 {
+                continue;
+            }
+            let statuses = |replies: &[(u16, Option<String>, String)]| {
+                replies.iter().map(|reply| reply.0).collect::<Vec<_>>()
+            };
+            assert_eq!(statuses(&b), statuses(&a));
+            assert_eq!(statuses(&a)[29..], [422, 429, 429]);
+            assert_eq!((&b[30].1, &b[30].2), (&a[30].1, &a[30].2), "the 429");
+            break;
+        }
+    })
+    .await
+    .unwrap();
+}

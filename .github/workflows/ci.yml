@@ -395,12 +395,15 @@ jobs:
         working-directory: examples/backends/flask-garden
         run: |
           ZUBRA_COMPILER="$GITHUB_WORKSPACE/target/debug/zubra" python app.py > flask.log 2>&1 &
-          for attempt in $(seq 1 30); do curl -fs http://127.0.0.1:5000/ > /dev/null && exit 0; sleep 1; done
-          cat flask.log; exit 1
+          # And as the hosted demo, which the Axum garden's hosted mode must match too.
+          HOSTED_DEMO=1 TRUST_PROXIES=1 PORT=5001 ZUBRA_COMPILER="$GITHUB_WORKSPACE/target/debug/zubra" python app.py > flask-hosted.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fs http://127.0.0.1:5000/ > /dev/null && curl -fs http://127.0.0.1:5001/ > /dev/null && exit 0; sleep 1; done
+          cat flask.log flask-hosted.log; exit 1
       - run: cargo test --locked
         working-directory: examples/backends/axum-garden
         env:
           FLASK_GARDEN_URL: http://127.0.0.1:5000
+          FLASK_GARDEN_HOSTED_URL: http://127.0.0.1:5001
 
   python-client:
     name: Python package (zubra)

@@ -17,7 +17,9 @@
     'use server'
     const done = await addReply(context, formData)
     if (done.error) return done
-    return Response.redirect(new URL(`/tickets/${done.id}#latest`, context.request.url), 303)
+    // A path, not a URL: behind a proxy that ends TLS the request's own URL is http://, and the
+    // browser resolves a path against the https page it's on.
+    return new Response(null, { status: 303, headers: { location: `/tickets/${done.id}#latest` } })
   }
 </script>
 <style>

@@ -2,7 +2,7 @@
 
 ![Bookshop inventory](../../../demos/shots/nuxt-bookshop.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://nuxt-bookshop-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A bookshop's inventory. Filter books by genre (filtered on the server, with the URL kept in sync), see stock against each book's reorder point, and edit a book's price, stock, tags and front-page flag, saved through a Nitro API route that validates them.
 
@@ -26,6 +26,7 @@ Imported into a `.vue` file, a `.zb` file is a Vue component:
 | A filter on a Zubra element driving `useFetch`'s query, so Nitro filters on the server, and the URL follows | `app/pages/index.vue` |
 | Registry components (`zubra add money-input quantity-stepper tag-input toggle-switch segmented-control`) beside the app's own `stock-meter` | `zubra/` |
 | An API that validates what the editor sends (422 with field errors) | `server/api/books/[id].put.ts` |
+| The hosted demo's caps (`HOSTED_DEMO=1`: same-site writes, 16 KiB bodies, 30 writes a minute per visitor, a reset at midnight UTC), as Nitro middleware | `server/hosted.js`, `server/middleware/hosted.ts` |
 
 ```sh
 npm install

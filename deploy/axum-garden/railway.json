@@ -1,0 +1,28 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "deploy/axum-garden/Dockerfile",
+    "watchPatterns": [
+      "/Cargo.toml",
+      "/src/**",
+      "/macros/**",
+      "/runtime/src/**",
+      "/examples/backends/flask-garden/components/**",
+      "/examples/backends/flask-garden/static/**",
+      "/examples/backends/axum-garden/Cargo.toml",
+      "/examples/backends/axum-garden/Cargo.lock",
+      "/examples/backends/axum-garden/src/**",
+      "/deploy/axum-garden/**",
+      "/.dockerignore"
+    ]
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": true,
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}

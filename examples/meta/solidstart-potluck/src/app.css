@@ -11,3 +11,4 @@ section { padding: 1rem; background: white; border: 1px solid #e6e1d8; border-ra
 .signup > button { justify-self: start; padding: 0.5rem 1.1rem; font: inherit; font-weight: 600; color: white; background: #b35c1e; border: 0; border-radius: 0.4rem; cursor: pointer; }
 .error { margin: 0; color: #b42318; }
 .notice { margin: 0 0 0.6rem; padding: 0.6rem 0.8rem; background: #eef7e9; border-radius: 0.5rem; }
+.demo-notice { margin: 0; padding: 0.4rem 1rem; background: #fff4c2; color: #4a3b00; font-size: 0.9rem; text-align: center; }

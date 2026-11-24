@@ -1,7 +1,8 @@
 // Every example, for the demo gallery (demos/build.mjs) and its screenshots (demos/screenshots.mjs).
 //
 // `build` is how a static example is built under a base path (the gallery links to it live);
-// the others need a server and are shown with a screenshot and a link to their source.
+// the others need a server and are shown with a screenshot and a link to their source, and
+// `live` is the https URL of one hosted on Railway (deploy/<id>/), which the card opens.
 // `interactive` is the page the gallery's test checks, when the first page has no JavaScript.
 
 export const demos = [
@@ -41,27 +42,37 @@ export const demos = [
   { id: 'eleventy-trails', dir: 'examples/meta/eleventy-trails', title: 'Mountain trails', stack: 'Eleventy 3', group: 'Server and static rendering',
     blurb: 'A static trail guide rendered by @zubra/server at build time, with no bundler.', build: 'eleventy' },
   { id: 'next-conference', dir: 'examples/meta/next-conference', title: 'Conference schedule', stack: 'Next.js 16', group: 'Server and static rendering',
-    blurb: 'Filter and star talks, and rate one through a Server Action.' },
+    blurb: 'Filter and star talks, and rate one through a Server Action.',
+    live: 'https://next-conference-production.up.railway.app/' },
   { id: 'nuxt-bookshop', dir: 'examples/meta/nuxt-bookshop', title: 'Bookshop inventory', stack: 'Nuxt 4', group: 'Server and static rendering',
-    blurb: 'Books filtered on the server with the URL in sync, stock against reorder points, and an edit form.' },
+    blurb: 'Books filtered on the server with the URL in sync, stock against reorder points, and an edit form.',
+    live: 'https://nuxt-bookshop-production.up.railway.app/' },
   { id: 'sveltekit-workouts', dir: 'examples/meta/sveltekit-workouts', title: 'Workout log', stack: 'SvelteKit 3', group: 'Server and static rendering',
-    blurb: 'Exercises logged through a form action with use:enhance, and a week of training against a goal.' },
+    blurb: 'Exercises logged through a form action with use:enhance, and a week of training against a goal.',
+    live: 'https://sveltekit-workouts-production.up.railway.app/' },
   { id: 'react-router-trips', dir: 'examples/meta/react-router-trips', title: 'Trip budget', stack: 'React Router 8', group: 'Server and static rendering',
-    blurb: 'Who paid for what and who owes whom, in framework mode with loaders and actions.' },
+    blurb: 'Who paid for what and who owes whom, in framework mode with loaders and actions.',
+    live: 'https://react-router-trips-production.up.railway.app/' },
   { id: 'solidstart-potluck', dir: 'examples/meta/solidstart-potluck', title: 'Potluck sign-up', stack: 'SolidStart 2', group: 'Server and static rendering',
-    blurb: 'Who’s bringing what, with a sign-up form that works without JavaScript.' },
+    blurb: 'Who’s bringing what, with a sign-up form that works without JavaScript.',
+    live: 'https://solidstart-potluck-production.up.railway.app/' },
 
   // Servers without a front-end framework
   { id: 'helpdesk', dir: 'examples/helpdesk', title: 'Help desk', stack: 'Express, EJS, MongoDB', group: 'Servers',
-    blurb: 'A ticket tracker that works without JavaScript, with a streamed activity feed.' },
+    blurb: 'A ticket tracker that works without JavaScript, with a streamed activity feed.',
+    live: 'https://helpdesk-production-32c1071a.up.railway.app/login' },
   { id: 'hono-bikes', dir: 'examples/hypermedia/hono-bikes', title: 'Bike shop', stack: 'Hono and htmx', group: 'Servers',
-    blurb: 'Search, paging, quick sales and inline editing, swapped in by htmx and hydrated in place.' },
+    blurb: 'Search, paging, quick sales and inline editing, swapped in by htmx and hydrated in place.',
+    live: 'https://hono-bikes-production.up.railway.app/' },
   { id: 'flask-garden', dir: 'examples/backends/flask-garden', title: 'Garden plots', stack: 'Flask, Jinja, SQLite', group: 'Servers',
-    blurb: 'Components rendered by the Rust CLI, with no Node.js on the server.' },
+    blurb: 'Components rendered by the Rust CLI, with no Node.js on the server.',
+    live: 'https://flask-garden-production.up.railway.app/' },
   { id: 'axum-garden', dir: 'examples/backends/axum-garden', title: 'Garden plots, in Rust', stack: 'Axum', group: 'Servers',
-    blurb: 'The Flask garden’s pages and components from a Rust server: compiled into the binary, with no Node.js and no child process.' },
+    blurb: 'The Flask garden’s pages and components from a Rust server: compiled into the binary, with no Node.js and no child process.',
+    live: 'https://axum-garden-production.up.railway.app/' },
   { id: 'standup', dir: 'examples/standup', title: 'Standup board', stack: 'Node.js and @zubra/sync', group: 'Servers',
-    blurb: 'One card per person, edited by everyone at once and offline, with the log in a SQLite file.' },
+    blurb: 'One card per person, edited by everyone at once and offline, with the log in a SQLite file.',
+    live: 'https://standup-production-8dbacc08.up.railway.app/' },
 
 
   // Plain HTML

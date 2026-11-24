@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { demos } from '../../../demos/list.js';
+import { builtWith } from '../../../demos/built-with.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../../..');
@@ -21,10 +22,14 @@ export default {
     name,
     demos: demos.filter((demo) => demo.group === name).map((demo) => ({
       ...demo,
-      live: has(demo.id),
+      // `built`: a static example in this build, opened under /demos/. `live` (demos/list.js) is a
+      // hosted demo's URL, for the examples that need a server.
+      built: has(demo.id),
       shot: shot(demo.id),
       source: `https://github.com/${repository}/tree/main/${demo.dir}`,
     })),
   })),
   count: demos.length,
+  // Apps outside this repository (demos/built-with.js), each live in production.
+  builtWith,
 };

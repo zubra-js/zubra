@@ -25,7 +25,19 @@ These applications run on the published packages, outside this repository. One c
 
 - **[open.blog](https://github.com/journey-to-code-org/open.blog)** is a static-site generator written in Rust. A theme can ship a portable widget, including open.parlor's `<card-room>`. With the `zubra` command installed where the site builds, the build runs `zubra compile` on the widget's `.zb` source and writes that HTML into the page, so a reader with JavaScript off still sees the widget and a link to the parlor.
 
-- **[Call Store](https://github.com/mnichols08/call-store-)** is a parts-counter call desk built for Southern Auto Supply. **[Tailgate](https://github.com/mnichols08/tailgate)** is a farm-to-door market: one cart across several farms, one payment, and a driver for each farm's order. Both render every page with `@zubra/server` and post forms through `@zubra/actions`, so the pages are complete HTML with JavaScript off and pick up live updates when it runs. Tailgate keeps a farmer's stock and storefront in `@zubra/sync`, edited on the device and synced when the connection returns.
+- **[Potomac Solutions](https://potomac.solutions)** builds apps for small businesses on Zubra and runs a demo of each in production, for made-up businesses with data cleared overnight. They find conformance problems that only show up on a real host, behind a real proxy. The demos:
+  - [Hickory Hollow Bakehouse](https://counter.potomac.solutions) ([source](https://github.com/potomac-solutions/counter)): order ahead from a bakery.
+  - [Lakeside Paddle & Pedal](https://outfitter.potomac.solutions) ([source](https://github.com/potomac-solutions/outfitter)): kayak, board and bike rentals.
+  - [Backbone Mountain Taxidermy](https://work-ticket.potomac.solutions) ([source](https://github.com/potomac-solutions/work-ticket)): jobs tracked by tag number.
+  - [Front Desk](https://potomac-solutions.github.io/front-desk/) ([source](https://github.com/potomac-solutions/front-desk)): one server for two businesses, the salon [Yough Valley Hair Co.](https://salon.potomac.solutions) and the [Pine Hollow Volunteer Fire Company](https://fire-company.potomac.solutions).
+  - [Old Depot Antiques](https://showroom.potomac.solutions) ([source](https://github.com/potomac-solutions/showroom)): one-of-a-kind stock, held or sold live.
+  - [Hemlock Ridge Cinema 8](https://cinestack.potomac.solutions) ([source](https://github.com/potomac-solutions/CineStack)): seats chosen through `@zubra/actions`.
+  - [Tailgate](https://tailgate.potomac.solutions) ([source](https://github.com/potomac-solutions/tailgate)): a farm-to-door market.
+  - [Apex Auto Supply](https://apex-auto.potomac.solutions) ([source](https://github.com/potomac-solutions/apex-auto)): a call desk for the parts counter.
+
+  The landing page lists them under "Built with Zubra" (`demos/built-with.js`).
+
+- **[Call Store](https://github.com/mnichols08/call-store-)** is a parts-counter call desk built for Southern Auto Supply. **[Tailgate](https://github.com/potomac-solutions/tailgate)** ([live](https://tailgate.potomac.solutions)) is a farm-to-door market: one cart across several farms, one payment, and a driver for each farm's order. Both render every page with `@zubra/server` and post forms through `@zubra/actions`, so the pages are complete HTML with JavaScript off and pick up live updates when it runs. Tailgate keeps a farmer's stock and storefront in `@zubra/sync`, edited on the device and synced when the connection returns.
 
 ## A component
 

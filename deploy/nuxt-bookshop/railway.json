@@ -1,0 +1,30 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "deploy/nuxt-bookshop/Dockerfile",
+    "watchPatterns": [
+      "/Cargo.toml",
+      "/Cargo.lock",
+      "/src/**",
+      "/wasm/**",
+      "/macros/**",
+      "/sync-server/**",
+      "/compiler/**",
+      "/plugin/**",
+      "/runtime/**",
+      "/server/**",
+      "/examples/meta/nuxt-bookshop/**",
+      "/deploy/nuxt-bookshop/**",
+      "/.dockerignore"
+    ]
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": true,
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}

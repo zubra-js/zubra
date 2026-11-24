@@ -28,3 +28,4 @@ session-card[track=Design], [data-track=Design] { --track: #c2410c; }
 .ok { color: #12704a; font-weight: 600; margin: 0; }
 .bad { color: #c62f3f; font-weight: 600; margin: 0; }
 star-rating { font-size: 1.6rem; }
+.demo-notice { margin: 0; padding: 0.4rem 1.5rem; background: #fff4c2; color: #4a3b00; font-size: 0.9rem; }

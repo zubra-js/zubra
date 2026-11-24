@@ -1,0 +1,9 @@
+{
+  "name": "zubra-railway",
+  "private": true,
+  "description": "Railway's SDK, for `railway config plan` and `apply` on railway.ts (the hosted demos)",
+  "type": "module",
+  "devDependencies": {
+    "railway": "3.17.0"
+  }
+}

@@ -4,6 +4,8 @@
 
 A team standup board: one card per person, edited by everyone at once, offline included. Plain Node.js, no bundler, no framework.
 
+It's hosted at <https://standup-production-8dbacc08.up.railway.app/> (its data resets daily; open it in two browsers), and the commands below run it yourself.
+
 ```sh
 cargo build                 # at the repository root, once
 cd examples/standup

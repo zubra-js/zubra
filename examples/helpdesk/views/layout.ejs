@@ -8,6 +8,7 @@
   <%# @zubra/server adds the CSS of the components this page rendered here, and their modules at the end of the body. %>
 </head>
 <body>
+  <% if (notice) { %><p class="demo-notice"><%= notice %></p><% } %>
   <header class="top">
     <a class="brand" href="/">Help desk</a>
     <% if (user) { %>
