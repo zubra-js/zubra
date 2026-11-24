@@ -21,7 +21,17 @@ railway config plan          # what would change
 railway config apply
 ```
 
-A push to `main` rebuilds only the services whose watched paths changed.
+## Deploying
+
+Railway doesn't pull from GitHub here. `deploy/up.mjs` uploads this checkout with `railway up`, from your machine or a runner of your own. It deploys only the demos whose `watchPatterns` match a file changed since a ref:
+
+```sh
+node deploy/up.mjs --since origin/main --dry-run   # which demos a change touches
+node deploy/up.mjs --since origin/main             # deploy them
+node deploy/up.mjs standup                         # or name them
+```
+
+It refuses uncommitted changes. A runner needs the Railway CLI and `RAILWAY_TOKEN`, a project token for `zubra-demos` kept in the runner's secrets, never in the repository. `node --test deploy/test/up.test.js` checks which demos a change rebuilds.
 
 ## Public-demo safety
 
