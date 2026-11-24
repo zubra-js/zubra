@@ -53,8 +53,10 @@ const BUDGETS = {
   // element's markers, static text and unbound attributes match the template, about 200 B, to
   // 19.25 KB. An adopted element also loses an event handler, srcdoc or ping, about 40 B, to
   // 19.3 KB. Disconnect drops window listeners, the slot observer and an in-flight fetch,
-  // and a promise that settles while detached wakes zb-await, about 400 B, to 19.75 KB.)
-  'src/index.js': { gzip: 19.75 * 1024 },
+  // and a promise that settles while detached wakes zb-await, about 400 B, to 19.75 KB. Connecting
+  // again moves what changed its `slot` attribute while the element was away, about 30 B, to
+  // 19.875 KB.)
+  'src/index.js': { gzip: 19.875 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
   // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`, 14 KB until the list work,
   // 14.25 KB until the faster Signals core, 14.75 KB until rows without markers, 15 KB until
