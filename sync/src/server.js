@@ -270,6 +270,20 @@ export function allowReads(collections) {
   return reads;
 }
 
+/**
+ * The `Host` names a server answers to, against DNS rebinding: a page on an attacker's domain whose
+ * DNS is pointed at this machine reaches it as the attacker's own site, so the browser lets that
+ * page read the answers, and only `Host` still names the attacker's domain. An IP address,
+ * `localhost` and `*.localhost` are always answered (an attacker can't own them); `allowed` adds
+ * names, and one starting with `.` is that name and every name under it.
+ */
+function hostAllowed(hostname, allowed) {
+  const name = hostname.replace(/\.$/, '').toLowerCase();
+  if (name.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
+  if (name === 'localhost' || name.endsWith('.localhost')) return true;
+  return allowed.some((entry) => (entry.startsWith('.') ? name === entry.slice(1) || name.endsWith(entry) : name === entry));
+}
+
 /** The default, since 6.0: pages read nothing and write nothing until `authorize` says who may. */
 const closed = () => false;
 const NO_AUTHORIZE = 'This sync server takes no reads or writes from pages until it is told who may access them: pass createSyncServer({ authorize }) (or authorize: allowAnyone, for a page anyone may edit). See docs/sync.md, "Who may read and write".';
@@ -286,10 +300,22 @@ const NOTICE_KEYS = 1000;
 // `warn` is given.
 const development = () => typeof globalThis.process?.env === 'object' && globalThis.process.env.NODE_ENV === 'development';
 
-export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server', maxSkew = 60_000, maxBytes = 1 << 20, maxChanges = 1000, warn = development() ? (message) => console.warn(message) : false } = {}) {
+export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], allowedHosts, heartbeat = 15_000, device = 'server', maxSkew = 60_000, maxBytes = 1 << 20, maxChanges = 1000, warn = development() ? (message) => console.warn(message) : false } = {}) {
   if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
   if (given !== undefined && typeof given !== 'function') throw new TypeError('createSyncServer: `authorize` is a function ({ request, collection, key, field, value, write, kind }) => boolean');
+  if (allowedHosts !== undefined && allowedHosts !== true && !(Array.isArray(allowedHosts) && allowedHosts.every((name) => typeof name === 'string'))) {
+    throw new TypeError("createSyncServer: `allowedHosts` is a list of host names (['app.example', '.app.example'] for it and its subdomains), or true for any");
+  }
   const authorize = given ?? closed;
+  // Which Host names are answered (DNS rebinding, see hostAllowed). Checked when the app lists
+  // them, and by default when anyone may read (allowAnyone, allowReads): what a rebinding page
+  // could take is there for anyone who reaches the server, so a server on a trusted network is
+  // exposed to any site its users visit. An app's own `authorize` gets no cookies of its site
+  // from such a page, so it isn't checked unless it lists names.
+  const hosts = allowedHosts === true ? null
+    : Array.isArray(allowedHosts) || given === allowAnyone || given?.[READS_ONLY]
+      ? [...(allowedHosts ?? []), ...origins.flatMap((origin) => { try { return [new URL(origin).hostname]; } catch { return []; } })].map((name) => name.replace(/\.$/, '').toLowerCase())
+      : null;
   /** Explain the closed-by-default policy, or preserve the app's own refusal. */
   const refused = (fallback) => json(403, { error: !given ? NO_AUTHORIZE : given[READS_ONLY] ? NO_WRITES : fallback });
   const base = mount.replace(/\/$/, '');
@@ -544,6 +570,10 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
   async function fetch(request) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith(`${base}/`)) return null;
+    // Before anything is read or written, and with no CORS: a name this server doesn't answer to.
+    if (hosts && !hostAllowed(url.hostname, hosts)) {
+      return json(403, { error: `This sync server doesn't answer to the host ${JSON.stringify(url.hostname)} (a protection against DNS rebinding): pass createSyncServer({ allowedHosts: [${JSON.stringify(url.hostname)}] }) if it's yours` });
+    }
     const origin = listed(request);
     // A browser asks before it sends JSON from another site (a preflight): only `origins` are told yes.
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: origin ? cors(origin) : {} });

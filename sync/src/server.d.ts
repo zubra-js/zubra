@@ -79,6 +79,14 @@ export function createSyncServer(options?: {
   scope?: (from: { request: Request }) => Scope | null | Promise<Scope | null>;
   origins?: string[];
   /**
+   * The `Host` names this server answers to, against DNS rebinding (a site whose name is pointed
+   * at this machine). An IP address, `localhost`, `*.localhost` and the hosts of `origins` are
+   * always answered; `'.app.example'` is that name and every name under it; `true` is any name.
+   * Checked when given, and by default with `authorize: allowAnyone` or `allowReads()`, where
+   * anyone who reaches the server may read; then another name is refused (403).
+   */
+  allowedHosts?: string[] | true;
+  /**
    * Told, once per collection, when a page read the whole log and was sent none of a collection
    * that has documents (`authorize` refused every read, or `scope` left them all out): to the
    * page that is an empty collection. By default `console.warn` where `process.env.NODE_ENV` is

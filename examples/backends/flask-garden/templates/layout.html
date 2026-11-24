@@ -10,6 +10,7 @@
   <script type="importmap">{ "imports": { "@zubra/runtime": "/vendor/zubra/index.js", "@zubra/runtime/spread": "/vendor/zubra/spread.js", "@zubra/runtime/primitives": "/vendor/zubra/primitives.js", "@zubra/runtime/motion": "/vendor/zubra/motion.js" } }</script>
 </head>
 <body>
+  {% if demo_notice %}<p class="demo-notice">{{ demo_notice }}</p>{% endif %}
   <header class="top">
     <a class="brand" href="/">🌱 Garden plots</a>
     <nav aria-label="Main"><a href="/">Plots</a> <a href="/harvest">Harvest</a></nav>

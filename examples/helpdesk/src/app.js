@@ -8,6 +8,7 @@ import { sessions } from './auth.js';
 import { zubra } from '@zubra/server/express';
 import { actions } from '@zubra/actions/express';
 import { SLA_HOURS } from './store/seed.js';
+import { demo, FULL, NOTICE } from './hosted.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VIEWS = join(here, '../views');
@@ -24,23 +25,29 @@ function ago(at, now) {
   return `${Math.round(minutes / (60 * 24))}d ago`;
 }
 
-export function createApp({ store, cache = true, now = () => Date.now() }) {
+/** `hosted`: the settings of a public demo (hosted.js), which caps and resets the help desk. */
+export function createApp({ store, cache = true, now = () => Date.now(), hosted = null }) {
   const app = express();
   const auth = sessions();
+  const limits = hosted && demo({ store, now, ...hosted });
+  if (limits) store = limits.store;
 
   app.disable('x-powered-by');
+  if (limits) app.use(limits.guard);
   app.use(express.static(join(here, '../public')));
   // Components rendered into the views, and their modules and @zubra/runtime served under /_zubra.
   // (Kept, for the error page at the end: `rendering.zubra` is the server it made.)
   // `compress`: the modules and the pages in Brotli or gzip, for a host with nothing in front that does.
-  const rendering = zubra({ components: join(here, '../components'), cache, compress: true });
+  const rendering = zubra({ components: join(here, '../components'), cache, compress: true, ...(limits && { streamTimeout: limits.streamTimeout }) });
   app.use(rendering);
   app.use(auth.middleware(store));
   // The components' 'use server' functions (the reply box's), with the signed-in user and the
   // store. Before the body parser: an action reads its own body.
-  const served = actions({ components: join(here, '../components'), compress: true, context: ({ req }) => ({ user: req.user, store, now }) });
+  // (A hosted demo is reached over plain HTTP behind a proxy, so the browser's https Origin is
+  // named in `origins`; its posts are smaller too.)
+  const served = actions({ components: join(here, '../components'), compress: true, context: ({ req }) => ({ user: req.user, store, now }), ...(limits && { origins: limits.origins, maxBytes: limits.maxBytes }) });
   app.use((req, res, next) => served.then((middleware) => middleware(req, res, next), next));
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, ...(limits && { limit: limits.maxBytes }) }));
 
   /**
    * Render `view` inside the layout; `finish()` then adds the CSS of the components the page
@@ -48,7 +55,7 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
    */
   async function page(res, view, locals = {}, status = 200) {
     const components = res.locals.zubra;
-    const data = { ...res.locals, ...locals, zubra: components.render, user: res.locals.user, actionsScript: (await served).actions.script() };
+    const data = { ...res.locals, ...locals, zubra: components.render, user: res.locals.user, notice: limits ? NOTICE : null, actionsScript: (await served).actions.script() };
     const body = await ejs.renderFile(join(VIEWS, `${view}.ejs`), data, { async: false });
     const html = await ejs.renderFile(join(VIEWS, 'layout.ejs'), { ...data, body });
     res.status(status).type('html');
@@ -121,7 +128,8 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
     const queue = (await store.listTickets({})).filter((ticket) => ticket.status !== 'solved' && (ticket.assignee === req.user.id || !ticket.assignee));
     // Streamed: the dashboard doesn't wait for the activity list (`recent-activity` shows
     // "loading" until it arrives, then hydrates the list in place).
-    const activity = recentActivity(people, at);
+    // (A hosted demo streams a bounded number at once; past that the list comes in the page.)
+    const activity = !limits || limits.streams.take(res) ? recentActivity(people, at) : await recentActivity(people, at);
     await page(res, 'dashboard', {
       title: 'Dashboard',
       stats,
@@ -173,6 +181,7 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
       dueAt: at + SLA_HOURS[values.priority] * HOUR,
       messages: [{ id: `m${at.toString(36)}`, author: req.user.id, body: values.body, at, internal: false }],
     });
+    if (id == null) return page(res, 'new', { title: 'New ticket', values, errors: { form: FULL } }, 503);
     res.redirect(303, `/tickets/${id}`);
   });
 
@@ -226,6 +235,8 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
     await page(res, 'error', { title: 'Not found', message: "That page doesn't exist, or it isn't yours to see." }, 404);
   });
   app.use(async (error, req, res, next) => {
+    // (A hosted demo's form post past its limit, read without a length: the limit, not a failure.)
+    if (limits && error.type === 'entity.too.large' && !res.headersSent) return res.status(413).type('text').send(`A request body is at most ${limits.maxBytes} bytes.`);
     console.error(error);
     if (res.headersSent) return next(error);
     // In development the page says what and where (usually something to fix in a view or a

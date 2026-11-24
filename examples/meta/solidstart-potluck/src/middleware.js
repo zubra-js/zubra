@@ -6,10 +6,18 @@
 // JavaScript.
 import { createMiddleware } from '@solidjs/start/middleware';
 import { createZubra } from '@zubra/server';
+import { createGuard, fromEnv } from './lib/hosted.js';
+import { resetPotluck } from './lib/potluck.js';
 
 const zubra = createZubra({ components: 'zubra' });
 
+// HOSTED_DEMO=1: a public demo, capped and reset daily (src/lib/hosted.js). The guard runs before
+// SolidStart's own handler, so before the server functions (and their cross-site check) too.
+const settings = fromEnv();
+const guard = settings && createGuard({ reset: resetPotluck, ...settings });
+
 export default createMiddleware([
+  ...(guard ? [(event) => guard(event.req, event.req.runtime?.node?.req?.socket?.remoteAddress)] : []),
   async (event, next) => {
     const response = await next();
     // A web Response, or H3's response (its body, with the headers on event.res).

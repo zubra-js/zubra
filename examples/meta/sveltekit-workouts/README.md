@@ -2,7 +2,7 @@
 
 ![Workout log](../../../demos/shots/sveltekit-workouts.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://sveltekit-workouts-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A workout log. Log an exercise with its sets, reps and effort through a **form action**, enhanced with `use:enhance`. The page shows this week's training days against a goal and the last eight weeks as a grid.
 

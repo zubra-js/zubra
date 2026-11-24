@@ -15,6 +15,8 @@ export interface SyncObjectOptions {
   table?: string;
   /** Other origins allowed to push. */
   origins?: string[];
+  /** The `Host` names answered (see createSyncServer). Any by default here: Cloudflare routes by Host, so a rebinding page never reaches the object. */
+  allowedHosts?: string[] | true;
   /** The scope a request may see and write, as `createSyncServer`'s: what keeps tenants apart. */
   scope?: (from: { request: Request }) => Scope | null | Promise<Scope | null>;
   /** As `createSyncServer`'s, when the class has no `authorize` method. */

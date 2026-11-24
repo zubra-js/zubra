@@ -4,13 +4,14 @@
 //! process: `include_zb!` checks each component at `cargo build`, and `Component::render` writes
 //! its HTML in this process.
 
+mod hosted;
 mod store;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use axum::extract::{Form, Path, State};
+use axum::extract::{DefaultBodyLimit, Form, Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -19,6 +20,7 @@ use serde_json::{json, Value};
 use zubra::Component;
 use zubra_macros::include_zb;
 
+pub use hosted::{Clock, Hosted, NOTICE};
 use store::{crop_name, CROPS, MAX_CROPS};
 pub use store::{Signup, Store};
 
@@ -61,21 +63,30 @@ const APP_CSS: &str = include_str!("../../flask-garden/static/app.css");
 pub struct App {
     store: Arc<Mutex<Store>>,
     runtime: Arc<PathBuf>,
+    /// A public demo's banner (hosted.rs).
+    notice: bool,
 }
 
 /// The app with a fresh in-memory store. `ZUBRA_RUNTIME` names a folder with `@zubra/runtime`'s
 /// ES modules; by default this repository's `runtime/src`.
 pub fn app() -> Router {
+    app_with(Arc::default(), None)
+}
+
+/// The app on `store`; `hosted`: the settings of a public demo (hosted.rs), which caps and resets
+/// the garden.
+pub fn app_with(store: Arc<Mutex<Store>>, hosted: Option<Hosted>) -> Router {
     let runtime = std::env::var_os("ZUBRA_RUNTIME")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../runtime/src"))
         });
     let state = App {
-        store: Arc::new(Mutex::new(Store::default())),
+        store: store.clone(),
         runtime: Arc::new(runtime),
+        notice: hosted.is_some(),
     };
-    Router::new()
+    let router = Router::new()
         .route("/", get(home))
         .route("/plots/{id}", get(plot_page).post(sign_up))
         .route("/harvest", get(harvest).post(log_harvest))
@@ -86,7 +97,14 @@ pub fn app() -> Router {
         )
         .route("/components/{file}", get(component_module))
         .route("/vendor/zubra/{*path}", get(runtime_module))
-        .with_state(state)
+        .with_state(state);
+    match hosted {
+        None => router,
+        // A larger body is a 413 when a route reads it, after the guard has counted the write.
+        Some(hosted) => router.layer(DefaultBodyLimit::max(hosted.max_bytes)).layer(
+            axum::middleware::from_fn_with_state(hosted::Guard::new(hosted, store), hosted::guard),
+        ),
+    }
 }
 
 // ---- rendering --------------------------------------------------------------------------------
@@ -119,7 +137,7 @@ impl Page {
     }
 
     /// The whole page: the view first (so the layout knows what was used), then the layout.
-    fn layout(&self, title: &str, body: &str) -> String {
+    fn layout(&self, app: &App, title: &str, body: &str) -> String {
         let modules: String = self
             .used
             .iter()
@@ -142,7 +160,7 @@ impl Page {
   <script type="importmap">{{ "imports": {{ "@zubra/runtime": "/vendor/zubra/index.js", "@zubra/runtime/spread": "/vendor/zubra/spread.js", "@zubra/runtime/primitives": "/vendor/zubra/primitives.js", "@zubra/runtime/motion": "/vendor/zubra/motion.js" }} }}</script>
 </head>
 <body>
-  <header class="top">
+{notice}  <header class="top">
     <a class="brand" href="/">🌱 Garden plots</a>
     <nav aria-label="Main"><a href="/">Plots</a> <a href="/harvest">Harvest</a></nav>
   </header>
@@ -154,6 +172,11 @@ impl Page {
 "#,
             title = escape(title),
             styles = self.styles(),
+            notice = if app.notice {
+                format!("  <p class=\"demo-notice\">{NOTICE}</p>\n")
+            } else {
+                String::new()
+            },
         )
     }
 }
@@ -194,7 +217,7 @@ async fn home(State(app): State<App>) -> Html<String> {
         "<h1>Plots</h1>\n<p class=\"lede\">{open} of {} plots are open this season. Pick one to sign up, or to join its waitlist.</p>\n{map}",
         plots.len()
     );
-    Html(page.layout("Plots", &body))
+    Html(page.layout(&app, "Plots", &body))
 }
 
 #[derive(Default)]
@@ -274,7 +297,7 @@ fn signup_form(
         size = escape(plot["size"].as_str().unwrap()),
         sun = escape(plot["sun"].as_str().unwrap()),
     );
-    (status, Html(page.layout(&format!("Plot {id}"), &body))).into_response()
+    (status, Html(page.layout(app, &format!("Plot {id}"), &body))).into_response()
 }
 
 fn empty_signup() -> Signup {
@@ -434,7 +457,7 @@ async fn harvest(
     let body = format!(
         "<h1>Harvest</h1>\n{logged}<div class=\"split\">\n  <section>\n    {chart}\n  </section>\n  <section>\n    <h2>Log a harvest</h2>\n    <form method=\"post\" class=\"form\">\n      <label>Plot\n        <select name=\"plot\">\n          {plots}\n        </select>\n      </label>\n      <label>Crop\n        <select name=\"crop\">\n          {crops}\n        </select>\n      </label>\n      {field}\n      <button>Log harvest</button>\n    </form>\n  </section>\n</div>"
     );
-    Html(page.layout("Harvest", &body))
+    Html(page.layout(&app, "Harvest", &body))
 }
 
 async fn log_harvest(State(app): State<App>, Form(form): Form<Vec<(String, String)>>) -> Response {

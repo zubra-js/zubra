@@ -33,24 +33,63 @@ export const engine = 'tc39';
 export const changes = () => null;
 // @dev-end
 
-/** Reactions on one Watcher, flushed by the caller (the proposal's own pattern for effects). */
+/**
+ * Reactions, flushed by the caller (the proposal's pattern for effects), on a Watcher per root
+ * owner: in effect.js an element's effects all hang from its own root scope, so that is a Watcher
+ * per element. A Watcher holds what it watches, so one shared by every effect kept each connected
+ * element's effects, and so each element, reachable from the page for as long as it was watched.
+ * An element connected in a document that is then dropped (an iframe removed, an inert document)
+ * is never disconnected, so it was never let go. With a Watcher each, an element's effects are
+ * held only by what they read, as in the default engine, and what's left of a dropped document
+ * goes with it. (A Watcher per effect would do the same, at half again the cost of adding rows.)
+ * `notified` holds a Watcher only from its notify until the next flush reads it.
+ */
 const OWNER = Symbol('owner');
+const WATCHER = Symbol('watcher');
 
 export function reactions(notify) {
-  const watcher = new Watcher(notify);
+  const watchers = new WeakMap(); // root owner → its Watcher
+  const notified = new Set();
+  const watcherOf = (owner) => {
+    let root = owner;
+    while (root?.parent) root = root.parent; // effect.js's owner chain
+    let watcher = watchers.get(root);
+    if (!watcher) {
+      watcher = new Watcher(() => {
+        if (notified.size === 0) notify();
+        notified.add(watcher);
+      });
+      watchers.set(root, watcher);
+    }
+    return watcher;
+  };
   return {
     create(fn, owner) {
       const reaction = new Computed(() => fn.call(owner));
       reaction[OWNER] = owner;
+      reaction[WATCHER] = watcherOf(owner);
       return reaction;
     },
     owner: (reaction) => reaction[OWNER],
     run: (reaction) => untrack(() => reaction.get()),
-    watch: (reaction) => watcher.watch(reaction),
-    unwatch: (...list) => watcher.unwatch(...list),
+    watch: (reaction) => reaction[WATCHER].watch(reaction),
+    unwatch(...list) {
+      // One pass per Watcher, however many of its reactions go (effect.js batches them).
+      const by = new Map();
+      for (const reaction of list) {
+        const watcher = reaction[WATCHER];
+        if (!by.has(watcher)) by.set(watcher, []);
+        by.get(watcher).push(reaction);
+      }
+      for (const [watcher, reactions] of by) watcher.unwatch(...reactions);
+    },
     pending() {
-      const pending = watcher.getPending();
-      watcher.watch(); // re-arm before running, so writes made by effects schedule another round
+      const pending = [];
+      for (const watcher of notified) {
+        pending.push(...watcher.getPending());
+        watcher.watch(); // re-armed before they run, so writes made by effects schedule another round
+      }
+      notified.clear();
       return pending;
     },
   };

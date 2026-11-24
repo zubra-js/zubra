@@ -922,7 +922,7 @@ test('a read-only server (allowReads): the page still works, its edits stay here
   await tab.fill('.title', 'Edited here');
   await tab.waitForTimeout(700); // several flushes
   assert.equal(await tab.inputValue('.title'), 'Edited here', 'the edit stays on this device');
-  assert.deepEqual((await (await closed.fetch(new Request('http://x/_zb/closed/pull?since=0'))).json()).changes.map((c) => c.value), ['From the server'], 'nothing from the page reached the log');
+  assert.deepEqual((await (await closed.fetch(new Request('http://localhost/_zb/closed/pull?since=0'))).json()).changes.map((c) => c.value), ['From the server'], 'nothing from the page reached the log');
   const refused = warnings.filter((text) => text.includes("refused this page's changes"));
   assert.equal(refused.length, 1, `said once: ${JSON.stringify(warnings)}`);
   assert.match(refused[0], /takes no writes from pages/);

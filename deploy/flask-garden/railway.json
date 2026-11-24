@@ -1,0 +1,28 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "deploy/flask-garden/Dockerfile",
+    "watchPatterns": [
+      "/Cargo.toml",
+      "/Cargo.lock",
+      "/src/**",
+      "/wasm/**",
+      "/macros/**",
+      "/sync-server/**",
+      "/clients/python/**",
+      "/runtime/src/**",
+      "/examples/backends/flask-garden/**",
+      "/deploy/flask-garden/**",
+      "/.dockerignore"
+    ]
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": true,
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}

@@ -1,5 +1,10 @@
 // @refresh reload
 import { createHandler, StartServer } from "@solidjs/start/server";
+import { fromEnv, NOTICE } from "./lib/hosted.js";
+
+// A public demo (HOSTED_DEMO=1) says so on every page. It is outside #app, so Solid, which mounts
+// there, renders and hydrates the page the same with it or without.
+const notice = fromEnv() ? NOTICE : null;
 
 export default createHandler(() => (
   <StartServer
@@ -12,6 +17,7 @@ export default createHandler(() => (
           {assets}
         </head>
         <body>
+          {notice && <p class="demo-notice">{notice}</p>}
           <div id="app">{children}</div>
           {scripts}
         </body>

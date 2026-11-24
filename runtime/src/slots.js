@@ -306,13 +306,24 @@ function routeChildren(host, context, slots, tag) {
       }
     }
   });
-  // Re-observe after a disconnect (element.js drops the observer so it can't retain the element).
-  context.observe = () => {
+  const observe = () => {
     context.observer.disconnect();
     context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
     for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
+    // disconnect() also drops the observation of each text node (a slot hears that one got words
+    // through it), so a label written after the element was moved would never reach the slot.
+    for (const slot of context.slots.values()) slot.nodes.forEach(watch);
   };
-  if (host.isConnected) context.observe();
+  // Connected again (element.js drops the observer on disconnect, so it can't retain the element).
+  // What left a slot while the element was detached went unseen: drop it first, so the element
+  // neither watches a node that is now someone else's (which, if the element is then never
+  // disconnected, as in a document that's dropped, would keep it alive through that node) nor puts
+  // it back where it was.
+  context.observe = () => {
+    for (const slot of context.slots.values()) show(slot);
+    observe();
+  };
+  if (host.isConnected) observe();
   for (const slot of context.slots.values()) slot.nodes.forEach(watch);
 }
 

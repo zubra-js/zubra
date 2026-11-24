@@ -2,7 +2,7 @@
 
 ![Conference schedule](../../../demos/shots/next-conference.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://next-conference-production.up.railway.app/> (its ratings reset daily), and the commands below run it yourself.
 
 A conference schedule. Filter the talks by track, star the ones you want (kept in `localStorage`), and rate a talk afterwards through a form handled by a **Server Action**.
 

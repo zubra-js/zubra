@@ -94,6 +94,10 @@ class Store:
         with self.db:
             self.db.execute("insert into harvests (plot, crop, kg, at) values (?, ?, ?, ?)", (plot, crop, kg, _now()))
 
+    def records(self) -> int:
+        """How many waitlist entries and harvests there are: what visitors add to."""
+        return self.db.execute("select (select count(*) from waitlist) + (select count(*) from harvests)").fetchone()[0]
+
     def harvest_by_crop(self) -> list[dict]:
         rows = self.db.execute(
             "select crop, sum(kg) as kg from harvests group by crop order by kg desc, crop"

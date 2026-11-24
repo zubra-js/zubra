@@ -28,7 +28,7 @@ test('a stream nobody reads holds a page or two, not the whole log', async () =>
   const log = countedLog();
   const sync = createSyncServer({ log, authorize: allowReads(['menu']), warn: false });
   const unread = [];
-  for (let i = 0; i < 5; i++) unread.push(await sync.fetch(new Request(`http://shop/_zb/sync/live?since=0&peer=p${i}`)));
+  for (let i = 0; i < 5; i++) unread.push(await sync.fetch(new Request(`http://localhost/_zb/sync/live?since=0&peer=p${i}`)));
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.ok(log.pages <= 5 * 3, `${log.pages} pages read for five streams that read nothing (of ${5 * PAGES})`);
   for (const response of unread) await response.body.cancel();
@@ -37,7 +37,7 @@ test('a stream nobody reads holds a page or two, not the whole log', async () =>
 test('a stream that is read gets the whole backlog', async () => {
   const log = countedLog();
   const sync = createSyncServer({ log, authorize: allowReads(['menu']), warn: false });
-  const response = await sync.fetch(new Request('http://shop/_zb/sync/live?since=0&peer=reader'));
+  const response = await sync.fetch(new Request('http://localhost/_zb/sync/live?since=0&peer=reader'));
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let seen = 0;
@@ -57,7 +57,7 @@ test('a stream that is read gets the whole backlog', async () => {
 
 test('a live stream that falls far behind is closed, to reconnect from its cursor', async () => {
   const sync = createSyncServer({ authorize: allowAnyone, warn: false });
-  const response = await sync.fetch(new Request('http://shop/_zb/sync/live?since=0&peer=slow'));
+  const response = await sync.fetch(new Request('http://localhost/_zb/sync/live?since=0&peer=slow'));
   await new Promise((resolve) => setTimeout(resolve, 20));
   // Two hundred writes while the page reads nothing.
   for (let i = 0; i < 200; i++) await sync.write('menu', `k${i}`, { name: `n${i}` });

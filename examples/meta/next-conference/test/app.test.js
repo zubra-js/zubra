@@ -43,6 +43,7 @@ async function open(path) {
 test('the schedule: server-rendered hosts, the track filter, and stars that survive a reload', async () => {
   const html = await (await fetch(`${base}/`)).text();
   assert.equal((html.match(/<session-card/g) ?? []).length, 12, 'every card is in the server HTML');
+  assert.ok(!html.includes('demo-notice'), 'not a hosted demo (test/hosted-app.test.js)');
   const { page, messages } = await open('/');
   await page.waitForSelector('session-card article');
   assert.equal(await page.locator('session-card').count(), 12);

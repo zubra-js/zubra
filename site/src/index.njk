@@ -130,18 +130,36 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
     <h3 class="group">{{ group.name }}</h3>
     <div class="grid">
       {% for demo in group.demos %}
-      {% set open = ('/demos/' + demo.id + '/') | url if demo.live else demo.source %}
+      {% set open = ('/demos/' + demo.id + '/') | url if demo.built else (demo.live or demo.source) %}
       <article class="card">
         <a class="shot" href="{{ open }}" tabindex="-1" aria-hidden="true">{% if demo.shot %}<img src="{{ ('/shots/' + demo.id + '.jpg') | url }}" alt="" width="1280" height="800" loading="lazy">{% else %}<span class="placeholder"></span>{% endif %}</a>
         <div class="body">
           <p class="stack">{{ demo.stack }}</p>
           <h4><a href="{{ open }}">{{ demo.title }}</a></h4>
           <p>{{ demo.blurb }}</p>
-          <p class="links">{% if demo.live %}<a href="{{ open }}">Open the demo</a>{% else %}<span class="server">Needs a server: run it locally</span>{% endif %} <a href="{{ demo.source }}">Source</a></p>
+          {% if demo.live and not demo.built %}<p class="cold">Hosted demo: the first load after it has been idle takes a few seconds.</p>{% endif %}
+          <p class="links">{% if demo.built %}<a href="{{ open }}">Open the demo</a>{% elif demo.live %}<a class="live" href="{{ demo.live }}">Open live</a>{% else %}<span class="server">Needs a server: run it locally</span>{% endif %} <a href="{{ demo.source }}">Source</a></p>
         </div>
       </article>
       {% endfor %}
     </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="wrap" id="built-with">
+  <h2>Built with Zubra</h2>
+  <p class="section-lede">Apps outside this repository, on the published packages and in production. The Potomac Solutions apps are for made-up businesses: nothing in them is really sold or booked, and their data is cleared overnight.</p>
+  <div class="grid">
+    {% for app in site.builtWith %}
+    <article class="card">
+      <div class="body">
+        <p class="stack">{{ app.by }}</p>
+        <h4><a href="{{ app.live }}">{{ app.title }}</a></h4>
+        <p>{{ app.blurb }}</p>
+        <p class="links"><a class="live" href="{{ app.live }}">Open live</a> <a href="{{ app.source }}">Source</a></p>
+      </div>
+    </article>
     {% endfor %}
   </div>
 </section>

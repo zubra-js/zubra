@@ -850,11 +850,23 @@ function @dropStandIn(node) {
         this.#show(slot);
       }
     });
+    this.#listen();
+  }
+  // What the observer watches: the element, each slot's park, and each slotted text node.
+  #listen() {
     this.#observer.observe(this, { childList: true, subtree: true, attributes: true, attributeFilter: ["slot"] });
     for (const record of this.#slots.values()) {
       this.#observer.observe(record.park, { childList: true });
       for (const node of record.nodes) this.#watch(node);
     }
+  }
+  // Back on the page. disconnectedCallback stopped the observer: watching a slotted text node
+  // registers on that node, so one that left (moved into the page) would otherwise keep the
+  // element alive for as long as it lives. What left a slot while the element was away went
+  // unseen: drop it, then watch what's still here.
+  #rejoin() {
+    for (const record of this.#slots.values()) this.#show(record);
+    this.#listen();
   }
 
   // Frameworks keep managing what they gave the element through the element itself (React calls

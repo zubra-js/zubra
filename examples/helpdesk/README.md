@@ -2,7 +2,7 @@
 
 ![Help desk](../../demos/shots/helpdesk.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://helpdesk-production-32c1071a.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A ticket tracker for a support team. Customers file tickets and follow the conversation. Agents work a queue, reply, leave internal notes, change status and priority, assign tickets and watch response deadlines.
 
@@ -37,6 +37,10 @@ The server renders components with `@zubra/compiler`, which includes the compile
 - `ZUBRA_COMPILER=/path/to/zubra` points at a CLI anywhere else.
 
 If none of these is there, `npm start` stops and says so, rather than serving error pages.
+
+### As a public demo
+
+`HOSTED_DEMO=1` (set by `deploy/helpdesk/Dockerfile`) makes it safe for strangers: always the in-memory store (never MongoDB), the notice "Demo: data resets daily." on every page, posts of at most 16 KiB, 30 writes a minute from each visitor (`TRUST_PROXIES` entries from the end of `X-Forwarded-For`), at most 100 tickets and 500 messages, cross-site posts refused, at most 20 dashboards streaming at once, and the seed data back at midnight UTC (`DEMO_RESET_MINUTES`) and on every start. Signing in is unchanged: visitors pick one of the demo's people. Behind a proxy that ends TLS the browser's Origin is `https://` while the app is reached over `http://`, so the public origin is named for `@zubra/actions`: `DEMO_ORIGIN`, or Railway's `RAILWAY_PUBLIC_DOMAIN`. The numbers are in `src/hosted.js`, and `test/hosted.test.js` checks them.
 
 ## How it fits together
 

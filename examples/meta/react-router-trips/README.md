@@ -2,7 +2,7 @@
 
 ![Trip budget](../../../demos/shots/react-router-trips.jpg)
 
-This one needs a server, so it isn't in the [live demos](https://zubra-js.github.io/zubra/); the commands below run it.
+It's hosted at <https://react-router-trips-production.up.railway.app/> (its data resets daily), and the commands below run it yourself.
 
 A shared trip budget in React Router 8's framework mode: who paid for what, who's up and down,
 and a form to add an expense. It uses:
@@ -27,6 +27,14 @@ cd examples/meta/react-router-trips
 npm install
 npm run dev                 # or: npm run build && npm start
 ```
+
+`npm start` runs `server.js`: what `react-router-serve` does, plus a public demo's guard. With
+`HOSTED_DEMO=1` (as in `deploy/react-router-trips`) every page says the data resets, a request body
+is at most 16 KiB, each visitor makes at most 30 changes a minute, the trip holds at most 100
+expenses, and it goes back to its seed at midnight UTC (`DEMO_RESET_MINUTES` shortens that) and
+whenever the server starts: `app/lib/hosted.server.js`. Behind a proxy that ends TLS,
+`TRUST_PROXIES=1` makes the request's URL https, so React Router's check that an action's `Origin`
+is the page's own passes for the page's forms and still refuses another site's.
 
 ## What it found
 
