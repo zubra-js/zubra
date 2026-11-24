@@ -53,7 +53,9 @@ test('every static example is in the build', () => {
 
 test('the gallery lists every example, and its links and images resolve under the base path', async () => {
   const { page, problems } = await open('');
-  assert.equal(await page.locator('article.card').count(), demos.length);
+  // The examples' cards: the landing page's other cards (Built with Zubra, demos/built-with.js) are
+  // landing.test.js's.
+  assert.equal(await page.locator('#demos article.card').count(), demos.length);
   const links = await page.$$eval('a[href], img[src]', (nodes) => nodes.map((node) => node.href || node.src));
   const local = [...new Set(links.filter((link) => link.startsWith(site.url)))];
   assert.ok(local.length > live.length, 'it links to the demos');
