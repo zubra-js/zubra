@@ -74,7 +74,11 @@ export function createActionsCore({ routes, client = null, forms = null, origins
     if (site === 'same-origin' || site === 'none' || (origin && origins.includes(origin))) return true;
     if (site) return false;
     if (!origin) return true; // not a browser (curl, a test): CSRF needs a browser
-    return origin === new URL(request.url).origin;
+    // This host, by http or https: behind a proxy that ends TLS (Railway, Fly, a load balancer),
+    // Node's request URL is http:// while the page is https://, and a browser without
+    // Sec-Fetch-Site (Safari before 16.4, Firefox before 90) sends only Origin.
+    const { host } = new URL(request.url);
+    return origin === `http://${host}` || origin === `https://${host}`;
   };
 
   /**

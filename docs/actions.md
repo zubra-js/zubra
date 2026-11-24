@@ -177,7 +177,7 @@ It needs nothing else from this package: with a bundler, `import '@zubra/actions
 
 ## Security
 
-- **Cross-site posts are refused** (by `Sec-Fetch-Site`, or `Origin` when that's missing), so a form on another site can't call an action with your users' cookies. Allow more origins with `origins: [...]`.
+- **Cross-site posts are refused** (by `Sec-Fetch-Site`, or `Origin` when that's missing, which must name this host by http or https, as behind a proxy that ends TLS), so a form on another site can't call an action with your users' cookies. Allow more origins with `origins: [...]`.
 - **The client never decides anything.** A server function validates its `FormData` like any endpoint: the form's `required` and `type="email"` are conveniences, not checks.
 - **A thrown error is never shown.** The client gets a generic error; `onError(error, request)` gets the real one.
 - **Unknown actions are 404**, and only `'use server'` functions have URLs.

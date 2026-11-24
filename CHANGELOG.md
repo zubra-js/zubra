@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Fixed
+
+- **Behind a proxy that ends TLS, `@zubra/actions` and `@zubra/sync` take same-site posts from browsers that don't send `Sec-Fetch-Site`.** Without that header they compared `Origin` with the request's URL, which Node builds as `http://` while the page is `https://` behind Railway, Fly or a load balancer. So Safari before 16.4 and Firefox before 90 had every action post and sync write refused with a 403. An `Origin` naming this host by http or https is now this site's, as the `zubra-sync` binary already decided; another host, a look-alike host or another port is still refused, and `Sec-Fetch-Site` still decides when it's sent. Found hosting the demos.
+
 ## 6.0.5 — 2026-11-23
 
 ### Added

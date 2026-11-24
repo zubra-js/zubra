@@ -65,6 +65,11 @@ test('cross-site posts are refused', async () => {
   assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://evil.example' })).status, 403);
   assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'http://localhost', accept: 'application/json' })).status, 200);
   assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { 'sec-fetch-site': 'same-origin', accept: 'application/json' })).status, 200);
+  // Behind a proxy that ends TLS the request is http:// and the page https://: an Origin naming this
+  // host by https is this site's, and a look-alike host or another port is not.
+  assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://localhost', accept: 'application/json' })).status, 200);
+  assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://localhost.evil.example' })).status, 403);
+  assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://localhost:8443' })).status, 403);
 });
 
 test('a site in `origins` may post from its own pages, as a browser sends it', async () => {

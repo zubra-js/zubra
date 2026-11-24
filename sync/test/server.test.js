@@ -82,6 +82,26 @@ test(`${backend.name}: malformed changes, cross-site writes and other paths are 
 });
 }
 
+test('behind a proxy that ends TLS, a page on this host writes without Sec-Fetch-Site, and another site still can\'t', async () => {
+  // Node sees http://; the page is https://. Browsers without Sec-Fetch-Site (Safari before 16.4,
+  // Firefox before 90) send only Origin: it names this host by https, as the zubra-sync binary takes.
+  const sync = createSyncServer({ authorize: allowAnyone });
+  const server = createServer(async (req, res) => { if (!(await sync.handle(req, res))) res.writeHead(404).end(); });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  const host = `127.0.0.1:${server.address().port}`;
+  const post = (origin, extra = {}) => fetch(`http://${host}/_zb/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json', origin, ...extra }, body: JSON.stringify({ changes: [change('title', origin)] }) }).then((r) => r.status);
+  try {
+    assert.equal(await post(`https://${host}`), 200, 'this host, by https');
+    assert.equal(await post(`http://${host}`), 200, 'this host, by http');
+    assert.equal(await post('https://evil.example'), 403, 'another site');
+    assert.equal(await post(`https://${host}.evil.example`), 403, 'a host that only starts with this one');
+    assert.equal(await post('https://127.0.0.1:1'), 403, 'this address on another port');
+    assert.equal(await post(`https://${host}`, { 'sec-fetch-site': 'cross-site' }), 403, 'Sec-Fetch-Site still decides when it is sent');
+  } finally {
+    server.close();
+  }
+});
+
 test('requests outside the mount are not the JavaScript server\'s', async () => {
   assert.equal(await createSyncServer({ authorize: allowAnyone }).fetch(new Request('http://localhost/elsewhere')), null);
 });

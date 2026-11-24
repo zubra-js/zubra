@@ -492,8 +492,13 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     const site = request.headers.get('sec-fetch-site');
     if (site === 'same-origin' || site === 'none' || listed(request)) return true;
     if (site) return false;
+    // A browser that doesn't send Sec-Fetch-Site still sends Origin. It's this site's when it names
+    // this host, by http or https, as the zubra-sync binary decides: behind a proxy that ends TLS
+    // (Railway, Fly, a load balancer), Node's request URL is http:// while the page is https://.
     const origin = request.headers.get('origin');
-    return !origin || origin === new URL(request.url).origin;
+    if (!origin) return true;
+    const { host } = new URL(request.url);
+    return origin === `http://${host}` || origin === `https://${host}`;
   };
   // What lets a page on one of `origins` read the answer (its pulls, its live stream), and send
   // JSON at all: CORS, as the zubra-sync binary gives its --origins. Any other site's page gets
