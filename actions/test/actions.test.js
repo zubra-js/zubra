@@ -65,6 +65,40 @@ test('cross-site posts are refused', async () => {
   assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://evil.example' })).status, 403);
   assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'http://localhost', accept: 'application/json' })).status, 200);
   assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { 'sec-fetch-site': 'same-origin', accept: 'application/json' })).status, 200);
+  // Behind a proxy that ends TLS the request is http:// and the page https://: an Origin naming this
+  // host by https is this site's, and a look-alike host or another port is not.
+  assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://localhost', accept: 'application/json' })).status, 200);
+  assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://localhost.evil.example' })).status, 403);
+  assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin: 'https://localhost:8443' })).status, 403);
+  // A host that only ends with this one (a neighbour on a shared platform, or a subdomain), another
+  // scheme, and the opaque origin of a sandboxed frame or a file.
+  for (const origin of ['https://evillocalhost', 'https://sub.localhost', 'ftp://localhost', 'null', 'https://localhost/']) {
+    assert.equal((await post(URL_LOGIN, { email: 'a@example.com' }, { origin })).status, 403, origin);
+  }
+});
+
+// Security audit of #435: an http page of this host is what a network attacker can write into
+// an https site that has no HSTS. Old browsers send its Origin and the site's cookies, so it's
+// this site's only when nothing says the page is https.
+test('an http page of this host may not post to it when the page is https', async () => {
+  const send = (core, url, headers) => core.fetch(new Request(url, { method: 'POST', headers: { accept: 'application/json', ...headers }, body: new URLSearchParams({ email: 'a@b.c' }) }));
+  const routes = () => routesFrom({ '/_zb/action/login-form/login': () => ({ ok: true }) });
+  const direct = createActionsCore({ routes: routes() });
+  // The request is https (Node ending TLS, or an edge runtime): only this host by https.
+  assert.equal((await send(direct, 'https://shop.example/_zb/action/login-form/login', { origin: 'https://shop.example' })).status, 200);
+  assert.equal((await send(direct, 'https://shop.example/_zb/action/login-form/login', { origin: 'http://shop.example' })).status, 403);
+  // Behind a proxy that ends TLS the request is http: the proxy's X-Forwarded-Proto, or the app's
+  // `secure: true`, says the page is https.
+  for (const [core, headers] of [[direct, { 'x-forwarded-proto': 'https' }], [direct, { 'x-forwarded-proto': 'HTTPS, http' }], [createActionsCore({ routes: routes(), secure: true }), {}]]) {
+    assert.equal((await send(core, 'http://shop.example/_zb/action/login-form/login', { origin: 'https://shop.example', ...headers })).status, 200);
+    assert.equal((await send(core, 'http://shop.example/_zb/action/login-form/login', { origin: 'http://shop.example', ...headers })).status, 403);
+  }
+  // Nothing says so (plain http, or a proxy that sends no X-Forwarded-Proto): this host by either.
+  assert.equal((await send(direct, 'http://shop.example/_zb/action/login-form/login', { origin: 'http://shop.example' })).status, 200);
+  assert.equal((await send(direct, 'http://shop.example/_zb/action/login-form/login', { origin: 'https://shop.example' })).status, 200);
+  assert.equal((await send(direct, 'http://shop.example/_zb/action/login-form/login', { origin: 'http://shop.example', 'x-forwarded-proto': 'http' })).status, 200);
+  // A browser that sends Sec-Fetch-Site is decided by it, as before.
+  assert.equal((await send(direct, 'https://shop.example/_zb/action/login-form/login', { origin: 'http://shop.example', 'sec-fetch-site': 'same-site' })).status, 403);
 });
 
 test('a site in `origins` may post from its own pages, as a browser sends it', async () => {
@@ -231,8 +265,12 @@ test('the result cookie is __Host- and Secure on HTTPS, and only the page the fo
   assert.equal(actions.result(new Request('http://localhost/other', { headers: { cookie: unpaged } })), null, 'a cookie with no page matches no path');
   // Behind a proxy that ends TLS, requests arrive as http: `secure: true` says the site is HTTPS.
   const proxied = createActionsCore({ routes: routesFrom({ '/_zb/action/login-form/login': () => ({ ok: true }) }), secure: true });
-  const behind = await proxied.fetch(new Request('http://shop.example/_zb/action/login-form/login', { method: 'POST', headers: { origin: 'http://shop.example', referer: 'http://shop.example/account' }, body: new URLSearchParams({ email: 'a@b.c' }) }));
+  const behind = await proxied.fetch(new Request('http://shop.example/_zb/action/login-form/login', { method: 'POST', headers: { origin: 'https://shop.example', referer: 'https://shop.example/account?tab=2' }, body: new URLSearchParams({ email: 'a@b.c' }) }));
   assert.match(behind.headers.get('set-cookie'), /^__Host-zb_result=.*; Secure/);
+  // The page it was posted from is https:// while the request is http://: it goes back there, not
+  // to the site's root, and the result is that page's.
+  assert.equal(behind.headers.get('location'), '/account?tab=2');
+  assert.match(decodeURIComponent(behind.headers.get('set-cookie')), /"page":"\/account"/);
   assert.equal(proxied.result(new Request('http://shop.example/account', { headers: { cookie: planted } })), null, 'and a planted plain cookie is not read');
   // Plain HTTP (local development) keeps the plain name: browsers refuse __Host- without Secure.
   const plain = await post(URL_LOGIN, { email: 'b@example.com' }, { referer: 'http://localhost/account' });
