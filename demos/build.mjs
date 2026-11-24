@@ -50,7 +50,8 @@ const local = (dir, bin) => join(repo, dir, 'node_modules/.bin', bin);
 
 // The playground.
 if (!only?.length || only.includes('playground')) {
-  run(process.execPath, [join(repo, 'playground/build.mjs'), '--out', join(out, 'playground'), ...(args.includes('--require-wasm') ? ['--require-wasm'] : [])], repo);
+  const origin = process.env.SITE_ORIGIN ?? `https://${(repository ?? 'zubra-js/zubra').split('/')[0]}.github.io`;
+  run(process.execPath, [join(repo, 'playground/build.mjs'), '--out', join(out, 'playground'), ...(args.includes('--require-wasm') ? ['--require-wasm'] : [])], repo, { SITE_URL: `${origin}${base}` });
 }
 
 // The static examples.

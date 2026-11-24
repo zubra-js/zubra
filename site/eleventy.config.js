@@ -30,6 +30,8 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy({ '../brand': 'docs/assets/brand' });
   // A page label may carry `code`.
   eleventyConfig.addFilter('code', (text) => escape(text).replace(/`([^`]+)`/g, '<code>$1</code>'));
+  // The social cards (brand/og/build.mjs renders them); og:image points here, and the playground's build uses the same address.
+  eleventyConfig.addPassthroughCopy({ '../brand/og/*.png': 'og' });
   eleventyConfig.addPassthroughCopy({ 'src/favicon.svg': 'favicon.svg' });
   eleventyConfig.addPassthroughCopy({ 'src/apple-touch-icon.png': 'apple-touch-icon.png' });
 

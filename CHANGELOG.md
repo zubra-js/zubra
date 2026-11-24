@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Social cards for the landing page, the docs and the playground.** Each page now has `og:*` and `twitter:card` tags and a 1200×630 image, so a shared link shows a preview. The cards are in `brand/og/` (`node brand/og/build.mjs` redraws them).
+
 ## 6.0.5 — 2026-11-23
 
 ### Added
