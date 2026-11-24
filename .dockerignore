@@ -1,0 +1,11 @@
+# The hosted demos' images (deploy/*/Dockerfile) are built from the repository root and copy only
+# what they use. Builds, installs and local state never go in: each image builds its own.
+.git
+target
+**/node_modules
+**/__pycache__
+**/*.db
+_site
+site/_site
+dist
+compiler/zubra.wasm
